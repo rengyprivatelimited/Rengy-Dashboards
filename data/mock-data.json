@@ -1,0 +1,157 @@
+{
+  "dashboard": {
+    "teams": [
+      { "name": "Sales Team", "open": 12, "new": 12, "pending": 12 },
+      { "name": "Design Team", "open": 12, "new": 12, "pending": 13 },
+      { "name": "Finance Team", "open": 12, "new": 13, "pending": 12 },
+      { "name": "Loan Team", "open": 12, "new": 12, "pending": 13 },
+      { "name": "Vendor Team", "open": 12, "new": 12, "pending": 14 },
+      { "name": "Ops Team", "open": 12, "new": 12, "pending": 12 }
+    ],
+    "topPerformers": [1, 2, 3, 4, 5]
+  },
+  "approvalManagement": {
+    "installationRows": [
+      { "ticketId": "#TK-1043", "projectId": "#PO01", "customer": "Murugan", "raisedBy": "Murugan", "dateCreated": "12-04-2025", "attachments": "2 Files attached", "status": "Not Approved" },
+      { "ticketId": "#TK-1044", "projectId": "#PO01", "customer": "Murugan", "raisedBy": "Murugan", "dateCreated": "12-04-2025", "attachments": "2 Files attached", "status": "Approved" },
+      { "ticketId": "#TK-1045", "projectId": "#PO01", "customer": "Murugan", "raisedBy": "Murugan", "dateCreated": "12-04-2025", "attachments": "2 Files attached", "status": "Approved" }
+    ],
+    "onboardingRows": [
+      { "ticketId": "#ONB-4101", "source": "Vendor Portal", "name": "Athul", "email": "sample@gmail.com", "category": "New Vendor", "time": "12-02-2026", "description": "New lead onboarding request for vendor profile.", "priority": "High", "attachments": "2 Files attached" },
+      { "ticketId": "#ONB-4102", "source": "Ops Team", "name": "Ritika S", "email": "ritika.s@rengy.test", "category": "Fin-tech Partner", "time": "15-02-2026", "description": "Onboarding details submitted for compliance verification.", "priority": "Medium", "attachments": "2 Files attached" }
+    ],
+    "amcRows": [
+      { "projectId": "#1023", "customer": "Murugan", "address": "4th Floor, RMZ Infinity, Bengaluru", "customerContact": "+918912839123", "customerEmail": "sample@gmail.com", "serviceRequested": "Inspection & Maintenance" },
+      { "projectId": "#1024", "customer": "Murugan", "address": "4th Floor, RMZ Infinity, Bengaluru", "customerContact": "+918912839123", "customerEmail": "sample@gmail.com", "serviceRequested": "Repair & Replacement" }
+    ]
+  },
+  "leadsProjects": {
+    "projects": [
+      { "id": "#1023", "customer": "Murugan", "vendor": "Murugan", "stage": "Site Survey", "projectValue": "Rs 5,12,000", "amountPaid": "Rs 5,12,000", "dueAmount": "Rs 5,12,000", "paymentType": "Loan", "paymentStatus": "60%", "assignedTo": "Admin_John" },
+      { "id": "#1024", "customer": "Athul", "vendor": "SunPower", "stage": "New Lead", "projectValue": "Rs 2,50,000", "amountPaid": "Rs 2,50,000", "dueAmount": "Rs 2,50,000", "paymentType": "Direct payment", "paymentStatus": "Full Payment Done", "assignedTo": "Admin_John" }
+    ],
+    "leads": [
+      { "id": "#1023", "customer": "Murugan", "vendor": "Murugan", "source": "Vendor App", "address": "HSR Layout, Bangalore", "milestone": "Site Survey", "amountPaid": "Rs 5,12,000", "dueAmount": "Rs 5,12,000", "assignedTo": "Athul" },
+      { "id": "#1024", "customer": "Athul", "vendor": "SunPower", "source": "Google Ads", "address": "Kochi", "milestone": "New Lead", "amountPaid": "-", "dueAmount": "-", "assignedTo": "Athul" }
+    ]
+  },
+  "vendorManagement": {
+    "vendors": [
+      { "id": 1, "name": "ABC Slon Ltd.", "rating": "4/5", "compliance": "60%", "projects": "120", "costRange": "Rs 1.5 Cr - Rs 2.5 Cr", "teamSize": "24", "location": "Bengaluru" },
+      { "id": 2, "name": "ABC Slon Ltd.", "rating": "4/5", "compliance": "60%", "projects": "120", "costRange": "Rs 1.5 Cr - Rs 2.5 Cr", "teamSize": "24", "location": "Bengaluru" }
+    ],
+    "requests": [
+      { "id": 1, "name": "ABC Slon Ltd.", "email": "sample@gmail.com", "mobile": "+912323123123", "address": "HSR layout , 2nd street , Bengaluru Urban, Karnataka", "requestedOn": "12-12-2025, 10:30 AM" },
+      { "id": 2, "name": "ABC Slon Ltd.", "email": "sample@gmail.com", "mobile": "+912323123123", "address": "HSR layout , 2nd street , Bengaluru Urban, Karnataka", "requestedOn": "12-12-2025, 10:30 AM" }
+    ]
+  },
+  "vendorDetail": {
+    "docs": ["Business PAN.pdf", "Business PAN.pdf"],
+    "reviews": [1, 2, 3],
+    "projectCardsCount": 12,
+    "ticketRows": [
+      { "id": "RNG-2024-0234", "project": "SolarHub Kochi", "status": "Pending", "created": "12-05-2025", "resolved": "15-05-2025" },
+      { "id": "RNG-2024-0235", "project": "SolarHub Kochi", "status": "Open", "created": "12-05-2025", "resolved": "15-05-2025" },
+      { "id": "RNG-2024-0236", "project": "SolarHub Kochi", "status": "Closed", "created": "12-05-2025", "resolved": "15-05-2025" }
+    ]
+  },
+  "teamManagement": {
+    "teamTabs": ["Sales Team", "Finance", "Design", "Loan Team", "Operation Team", "AMC Team", "Net Metering Team"],
+    "users": [
+      { "employeeId": "#1023", "name": "Murugan", "email": "sample@gmail.com", "phone": "+919633524414", "role": "Manager", "dateCreated": "12-04-2025", "team": "Sales Team" },
+      { "employeeId": "#1024", "name": "Athul", "email": "athul@gmail.com", "phone": "+919633524415", "role": "Sales person", "dateCreated": "12-04-2025", "team": "Sales Team" }
+    ]
+  },
+  "teamPermissions": {
+    "rows": [
+      { "role": "Sales Manager", "users": "sample@gmail.com", "name": "Atul", "dateCreated": "12-04-2025", "team": "Sales Team" },
+      { "role": "Sales Team Memeber", "users": "sample@gmail.com", "name": "Atul", "dateCreated": "12-04-2025", "team": "Sales Team" }
+    ]
+  },
+  "loanManagement": {
+    "statusOptions": ["Documents Pending", "Rejected", "Hold", "Disbursed", "Approved", "Log In Pending"],
+    "loanRequests": [
+      { "id": 1, "leadId": "#PO01", "customer": "Robert Wilson", "vendor": "SunPower Solutions", "projectValue": "Rs 5,12,000", "bank": "Fibe", "requestedOn": "12-05-2025" },
+      { "id": 2, "leadId": "#PO01", "customer": "Lisa Martinez", "vendor": "Green Energy Co", "projectValue": "Rs 5,12,000", "bank": "Money view", "requestedOn": "12-05-2025" }
+    ],
+    "loanStatuses": [
+      { "id": 1, "leadId": "#PO01", "customer": "Robert Wilson", "vendor": "SunPower Solutions", "projectValue": "Rs 5,12,000", "bank": "Fibe", "requestedOn": "12-05-2025", "updatedOn": "12-05-2025", "status": "Documents Pending", "remarks": "--", "disbursedAmount": "--", "pendingAmount": "--", "region": "Kerala" },
+      { "id": 2, "leadId": "#PO01", "customer": "Lisa Martinez", "vendor": "Green Energy Co", "projectValue": "Rs 5,12,000", "bank": "Money view", "requestedOn": "12-05-2025", "updatedOn": "12-05-2025", "status": "Approved", "remarks": "--", "disbursedAmount": "--", "pendingAmount": "--", "region": "Kerala" }
+    ]
+  },
+  "fintechPartners": {
+    "partners": [
+      { "id": 1, "name": "ICICI Bank", "sub": "Bank", "poc": "Athul", "location": "Andra Pradesh", "type": "NBFC", "loans": "12", "disbursed": "12", "resub": "12", "logins": "12", "avg": "12 Days", "approved": "12", "approvalRate": "90%", "rejectedRate": "90%", "rejectedLoans": "12", "phone": "+7 (903) 679-96-15", "email": "tienlapspktnd@gmail" },
+      { "id": 2, "name": "CITI", "sub": "Bank", "poc": "Savannah Nguyen", "location": "Kerala", "type": "Bank", "loans": "60", "disbursed": "60", "resub": "60", "logins": "60", "avg": "15 Days", "approved": "60", "approvalRate": "50%", "rejectedRate": "50%", "rejectedLoans": "60", "phone": "+7 (903) 880-93-38", "email": "nvt.isst.nute@gmail.c" }
+    ]
+  },
+  "inventoryManagement": {
+    "categoryOptions": ["Inverter", "Solar Panel", "BOS"],
+    "rows": [
+      { "id": 1, "itemCode": "#1023", "itemName": "Hybrid Inverter (5 kW)", "category": "Inverter", "brand": "Usha", "count": "01", "specification": "550W\n5kW Hybrid", "updated": "12-05-2025", "currentPrice": "Rs 2,50,000" },
+      { "id": 2, "itemCode": "#1023", "itemName": "Mono PERC Solar Panel (550W)", "category": "Solar Panel", "brand": "Vendor App", "count": "01", "specification": "550W\n5kW Hybrid", "updated": "12-05-2025", "currentPrice": "Rs 2,50,000" }
+    ]
+  },
+  "reports": {
+    "kpis": [
+      { "title": "30 Days", "subtitle": "Installation Completed", "note": "Avg. Lead Handover +8%" },
+      { "title": "70%", "subtitle": "NET Metering Approval", "note": "Approval +2%" },
+      { "title": "8/10", "subtitle": "Avg Vendor Performance", "note": "Improved by 12%" },
+      { "title": "30 Days", "subtitle": "Avg Loan Disbursement Time", "note": "Improved by 12%" }
+    ],
+    "baseRows": [
+      { "id": "#123123", "vendorName": "Sun Flowers", "customerName": "Murugan", "phone": "+123123123", "rep": "Athul", "repContact": "+182391823", "stage": "New Lead", "substage": "Site survey Scheduled" },
+      { "id": "#123123", "vendorName": "AMC Solar", "customerName": "Murugan", "phone": "12-02-2025", "rep": "Athul", "repContact": "+182391823", "stage": "New Lead", "substage": "Site survey Scheduled" }
+    ]
+  },
+  "ticketAlerts": {
+    "tickets": [
+      { "id": 1, "ticketId": "#1023", "raisedBy": "Murugan", "team": "Customer", "description": "Customer lead assigned to vendor, but no site visit update for 3 days.", "date": "12-10-2025", "time": "10:30 PM", "priority": "High", "assignedTo": "Admin_John", "status": "Resolved" },
+      { "id": 2, "ticketId": "#1023", "raisedBy": "Athul", "team": "Sales Team", "description": "Vendor payout stuck in processing due to missing invoice upload.", "date": "12-10-2025", "time": "10:30 PM", "priority": "Medium", "assignedTo": "Admin_John", "status": "Open" },
+      { "id": 3, "ticketId": "#1024", "raisedBy": "Adithya", "team": "Finance Team", "description": "Loan document mismatch found during disbursement check.", "date": "12-10-2025", "time": "10:30 PM", "priority": "High", "assignedTo": "Admin_John", "status": "Open" },
+      { "id": 4, "ticketId": "#1025", "raisedBy": "Murugan", "team": "Vendor", "description": "Vendor ID inactive; system not syncing project data.", "date": "12-10-2025", "time": "10:30 PM", "priority": "Medium", "assignedTo": "Admin_John", "status": "Resolved" }
+    ],
+    "alerts": [
+      { "id": 1, "title": "Vendor Acknowledgement Pending", "description": "12 hrs since vendor assignment, acknowledgment not received", "severity": "Error", "unread": false },
+      { "id": 2, "title": "Site Survey Completed", "description": "48 hours after Under Review status without update", "severity": "Success", "unread": false },
+      { "id": 3, "title": "Material Dispatch Awaited", "description": "Vendor scheduled dispatch, awaiting confirmation from logistics team", "severity": "Info", "unread": true },
+      { "id": 4, "title": "Loan Application Approved", "description": "Loan approved by the partner, Lead ID #12312", "severity": "Success", "unread": true },
+      { "id": 5, "title": "Installation Data Missing", "description": "Installation marked done, but required verification report not uploaded", "severity": "Error", "unread": false }
+    ],
+    "teams": ["Customer", "Sales Team", "Finance Team", "Vendor", "Operation Team"],
+    "priorities": ["High", "Medium"],
+    "statusOptions": ["Open", "Resolved"]
+  },
+  "support": {
+    "rows": [
+      { "id": 1, "requestId": "#12234", "raisedBy": "Murugan", "team": "Customer", "email": "Vendor@gamil.com", "phone": "+91923534313", "priority": "High", "status": "Open", "openTime": "Open : Dec 05", "closeTime": "Close : --", "notes": "Fintech partner requested clarification on document mismatch for loan verification.", "assigned": "Admin_John" },
+      { "id": 2, "requestId": "#12314", "raisedBy": "Athul", "team": "Sales Team", "email": "Vendor@gamil.com", "phone": "+91923534313", "priority": "Medium", "status": "Closed", "openTime": "Open : Dec 05", "closeTime": "Close : Dec 06", "notes": "Vendor unable to update milestone status on the dashboard. Needs manual sync support.", "assigned": "Assign now" },
+      { "id": 3, "requestId": "#12235", "raisedBy": "Adithya", "team": "Finance Team", "email": "Vendor@gamil.com", "phone": "+91923534313", "priority": "High", "status": "Open", "openTime": "Open : Dec 05", "closeTime": "Close : Dec 06", "notes": "Loan account disbursement mismatch needs manual backend update.", "assigned": "Admin_John" },
+      { "id": 4, "requestId": "#12315", "raisedBy": "Murugan", "team": "Vendor", "email": "Vendor@gamil.com", "phone": "+91923534313", "priority": "Medium", "status": "Closed", "openTime": "Open : Dec 05", "closeTime": "Close : Dec 06", "notes": "Vendor unable to update milestone status on the dashboard. Needs manual sync support.", "assigned": "Assign now" }
+    ],
+    "filterVendors": ["ABC Solutions", "Sun Sloars", "AMC Solar"],
+    "filterStatuses": ["Opened", "Closed", "High Priority", "Medium Priority"]
+  },
+  "settings": {
+    "dashboardPrefs": ["Sales team", "Design Team", "Loan Team", "Operational Team", "AMC Team", "Net Metering Team", "Supply-chain Team"],
+    "notificationPrefs": ["New lead assigned", "Payment overdue reminders", "Vendor delay alerts", "Material dispatch issues", "Loan application changes", "Net metering status changes"],
+    "dropdownCards": [
+      { "slug": "modules", "title": "Modules", "subtitle": "Solar panel modules and specifications" },
+      { "slug": "inverters", "title": "Inverters", "subtitle": "Inverter types and capacities" },
+      { "slug": "structures", "title": "Structures", "subtitle": "Mounting structures and frames" },
+      { "slug": "bos", "title": "BOS (Blance of System)", "subtitle": "Cables, connectors, and accessories" },
+      { "slug": "mounting-types", "title": "Mounting Types", "subtitle": "Roof and ground mounting options" },
+      { "slug": "cable-types", "title": "Cable Types", "subtitle": "DC and AC cable specification" },
+      { "slug": "project-status", "title": "Project Status", "subtitle": "Project lifecycle stages" },
+      { "slug": "payment-status", "title": "Payment Status", "subtitle": "Payment schedules and conditions" }
+    ],
+    "dropdownRows": [
+      { "id": 1, "name": "Murugan", "role": "Customer", "code": "#12234", "status": "Inactive", "time": "Jan 15, 2024" },
+      { "id": 2, "name": "Athul", "role": "Sales Team", "code": "#12314", "status": "Active", "time": "Jan 15, 2024" },
+      { "id": 3, "name": "Adithya", "role": "Finance Team", "code": "#12234", "status": "Inactive", "time": "Jan 15, 2024" },
+      { "id": 4, "name": "Murugan", "role": "Vendor", "code": "#12314", "status": "Active", "time": "Jan 15, 2024" },
+      { "id": 5, "name": "Athul", "role": "Sales Team", "code": "#1234", "status": "Inactive", "time": "Jan 15, 2024" },
+      { "id": 6, "name": "Murugan", "role": "Vendor", "code": "#12314", "status": "Active", "time": "Jan 15, 2024" }
+    ]
+  }
+}
