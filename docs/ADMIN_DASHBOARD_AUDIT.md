@@ -1,170 +1,151 @@
 # Admin Dashboard Audit (Admin Role Only)
 
-Date: 2026-02-28
+Date: 2026-02-28  
 Scope: Admin dashboard pages only (routes under `/admin/*`)
 
 Legend
-- Completed: UI + API integration working end‑to‑end
-- Partial: UI done, some API wired, but missing full mapping/actions/filters
-- Pending: UI only (mock/static) or missing key API wiring
+- `[x]` Completed
+- `[ ]` Pending / Not integrated
 
 **Page: `/admin/dashboard`**
-- Status: Partial
-- UI: Implemented in `features/dashboard/components/AdminDashboardLegacy.tsx`
-- API: KPI stats use `getAdminDashboardDataWithToken` in `features/dashboard/api/admin-dashboard.ts`
-- Pending:
-- Teams cards are static
-- Top performers list is static
-- Funnel/Trend/Alerts/Tasks widgets are static
-- Search, filters, time ranges, downloads not wired
-- No loading/skeleton states
+- [x] Admin route guard (`requireRole("admin")`)
+- [x] KPI stat cards wired to `getAdminDashboardDataWithToken`
+- [ ] Teams cards mapped to API
+- [ ] Top performers mapped to API
+- [ ] Funnel widgets mapped to API
+- [ ] Installation/dispatch charts mapped to API
+- [ ] Alerts/quick actions mapped to API
+- [ ] Search field wired to API
+- [ ] Time range filters wired to API
+- [ ] Download actions wired to API
+- [ ] Loading/skeleton states
 
 **Page: `/admin/approval-management`**
-- Status: Partial
-- UI: Implemented in `app/approval-management/page.tsx`
-- API: `getApprovalManagementData` wired with fallback rows
-- Completed:
-- Search triggers API query
-- Pending:
-- Filters and pagination are static
-- Approve/Reject/Download/Resubmit actions are not wired to API
-- Drawer edits are read-only (no save API)
-- No loading/skeleton states
+- [x] Admin route guard
+- [x] Table data wired to `getApprovalManagementData` with search input
+- [ ] Filters (Date/Vendor/Category/Source) wired to API
+- [ ] Pagination wired to API
+- [ ] Approve/Reject actions wired to API
+- [ ] Download/Resubmission actions wired to API
+- [ ] Edit drawer “Save” wired to API
+- [ ] Loading/skeleton states
+- [ ] Remove fallback mock data usage
 
 **Page: `/admin/leads-projects`**
-- Status: Partial
-- UI: Implemented in `app/leads-projects/page.tsx`
-- API: `getLeadsProjectsData` used, but mock data still present
-- Pending:
-- Verify full data mapping (many sections still rely on mock data)
-- Filters, search, pagination not wired to API
-- Actions (edit/status changes/notes) not wired
-- No loading/skeleton states
+- [x] Admin route guard
+- [x] API helper exists (`getLeadsProjectsData`)
+- [ ] Replace mock data with API response across all sections
+- [ ] Search/filter/pagination wired to API
+- [ ] Action buttons (edit/status/notes) wired to API
+- [ ] Loading/skeleton states
 
 **Page: `/admin/vendor-management`**
-- Status: Partial
-- UI: Implemented in `app/vendor-management/page.tsx`
-- API: `getVendorManagementData` used with mock fallbacks
-- Pending:
-- Replace fallback cards/requests with live data only
-- Filters/search/pagination not wired
-- Actions (approve/reject/chat/export) not wired
-- No loading/skeleton states
+- [x] Admin route guard
+- [x] API helper exists (`getVendorManagementData`)
+- [ ] Replace fallback mock cards/requests with API data
+- [ ] Search/filter/pagination wired to API
+- [ ] Approve/Reject/Chat/Export actions wired to API
+- [ ] Loading/skeleton states
 
 **Page: `/admin/vendor-management/[vendorId]`**
-- Status: Partial
-- UI: Implemented in `app/vendor-management/[vendorId]/page.tsx`
-- API: `getVendorDetailData` and related types in `features/admin/api/vendor-detail.ts`
-- Pending:
-- Ensure all tabs/sections map to API fields (history, tickets, documents)
-- Actions (edit/save/status updates) not wired
-- No loading/skeleton states
+- [x] Admin route guard
+- [x] API helpers exist (`getVendorDetailData`, history helpers)
+- [ ] Map all tabs/sections to API response fields
+- [ ] Actions (edit/save/status updates) wired to API
+- [ ] Loading/skeleton states
 
 **Page: `/admin/team-management`**
-- Status: Partial
-- UI: Implemented in `app/team-management/page.tsx`
-- API: `getTeamUsers` used with mock fallbacks
-- Pending:
-- Replace mock rows with live data only
-- Filters/search/pagination not wired
-- Actions (add/edit/delete) not wired
-- No loading/skeleton states
+- [x] Admin route guard
+- [x] API helper exists (`getTeamUsers`)
+- [ ] Replace mock data with API response
+- [ ] Search/filter/pagination wired to API
+- [ ] Create/Edit/Delete actions wired to API
+- [ ] Loading/skeleton states
 
 **Page: `/admin/team-management/team-permissions`**
-- Status: Partial
-- UI: Implemented in `app/team-management/team-permissions/page.tsx`
-- API: Uses `getMenuMap`, `getTeamPermissionsForTeam`, `createRoleWithPermissions`, `updateRoleWithPermissions`
-- Pending:
-- Confirm all create/update flows are wired end‑to‑end (payloads + success handling)
-- No loading/skeleton states
+- [x] Admin route guard
+- [x] API helpers exist (`getMenuMap`, `getTeamPermissionsForTeam`, `createRoleWithPermissions`, `updateRoleWithPermissions`)
+- [ ] Confirm create/update flows use live API responses (success/error handling)
+- [ ] Loading/skeleton states
 
 **Page: `/admin/loan-management`**
-- Status: Partial
-- UI: Implemented in `app/loan-management/page.tsx`
-- API: Lists wired via `getLoanRequests` and `getLoanStatuses` (`/loans?loanApprove=0/1`)
-- Completed:
-- Loan Requests and Loan Status tables pull live data
-- Side drawers use API‑mapped fields
-- Pending:
-- Filters/search/pagination not wired to API
-- Update status is local only (no PUT)
-- File download/upload actions not wired
-- No loading/skeleton states
+- [x] Admin route guard
+- [x] Loan Requests list wired to `/loans?loanApprove=0`
+- [x] Loan Status list wired to `/loans?loanApprove=1`
+- [x] Detail/Update sidebars map API fields
+- [ ] Search input wired to API
+- [ ] Filters wired to API
+- [ ] Pagination wired to API
+- [ ] Update status “Save” wired to PUT API
+- [ ] Attachments download/upload wired to API
+- [ ] Delete actions wired to API
+- [ ] Loading/skeleton states
 
 **Page: `/admin/fin-tech-partners`**
-- Status: Partial
-- UI: Implemented in `app/fin-tech-partners/page.tsx`
-- API: List and edit sidebar load from `getFinTechPartners` and `getFinTechPartner`
-- Completed:
-- Grid/list views pull live data
-- Edit sidebar fetches detail data
-- Skeletons implemented for grid/list
-- Pending:
-- Filters/search/pagination not wired
-- Save/Update/Delete actions not wired
-- Create form not wired
+- [x] Admin route guard
+- [x] Grid/list data wired to `/loan-providers`
+- [x] Skeletons for grid/list
+- [x] Edit sidebar fetches partner detail
+- [ ] Search input wired to API
+- [ ] Filters (Type/Location) wired to API
+- [ ] Pagination wired to API
+- [ ] Create form wired to API
+- [ ] Edit “Save” wired to PUT API
+- [ ] Delete/Deactivate actions wired to API
 
 **Page: `/admin/fin-tech-partners/[partnerId]`**
-- Status: Partial
-- UI: Implemented in `app/fin-tech-partners/[partnerId]/page.tsx`
-- API: Detail loaded via `getFinTechPartner`
-- Completed:
-- Skeleton while loading
-- Overview/Business/Performance/Remarks map to API fields
-- Pending:
-- Actions (edit/save/export) not wired
-- Account/Chat tabs are static
+- [x] Admin route guard
+- [x] Detail API wired to `/loan-providers/:id`
+- [x] Skeleton while loading
+- [ ] Export action wired to API
+- [ ] Edit actions wired to API
+- [ ] Account tab content wired to API
+- [ ] Chat tab content wired to API
 
 **Page: `/admin/inventory-management`**
-- Status: Partial
-- UI: Implemented in `app/inventory-management/page.tsx`
-- API: Items and categories wired via `getInventoryItems` and `getInventoryCategories`
-- Completed:
-- Table loads live inventory items
-- Category list loads from API
-- Skeleton rows while loading
-- Pending:
-- Filters/search/pagination not wired
-- Detail drawer fields still include hard-coded values
-- Create/Edit drawers are read-only and not wired to API
+- [x] Admin route guard
+- [x] Inventory list wired to `/inventory`
+- [x] Category filter options wired to `/common/category`
+- [x] Skeleton rows while loading
+- [ ] Search input wired to API
+- [ ] Category filter wired to API query
+- [ ] Pagination wired to API
+- [ ] Detail drawer fields mapped to API (remove static values)
+- [ ] Create/Edit drawers wired to API
+- [ ] Delete action wired to API
 
 **Page: `/admin/reports`**
-- Status: Pending
-- UI: Implemented in `app/reports/page.tsx`
-- API: None (mock data only)
-- Pending:
-- Map KPIs and tables to API responses
-- Filters/date ranges/pagination/actions not wired
-- No loading/skeleton states
+- [x] Admin route guard
+- [ ] KPI cards wired to API
+- [ ] Tables wired to API
+- [ ] Filters/date ranges wired to API
+- [ ] Export actions wired to API
+- [ ] Loading/skeleton states
 
 **Page: `/admin/ticket-alerts`**
-- Status: Pending
-- UI: Implemented in `app/ticket-alerts/page.tsx`
-- API: None (mock data only)
-- Pending:
-- Ticket list, alerts, filters, and actions need API wiring
-- No loading/skeleton states
+- [x] Admin route guard
+- [ ] Ticket list wired to API
+- [ ] Alerts list wired to API
+- [ ] Filters wired to API
+- [ ] Actions (resolve/assign/etc.) wired to API
+- [ ] Loading/skeleton states
 
 **Page: `/admin/support`**
-- Status: Pending
-- UI: Implemented in `app/support/page.tsx`
-- API: None (mock data only)
-- Pending:
-- Support requests, filters, and actions need API wiring
-- No loading/skeleton states
+- [x] Admin route guard
+- [ ] Support list wired to API
+- [ ] Filters wired to API
+- [ ] Actions (close/assign/etc.) wired to API
+- [ ] Loading/skeleton states
 
 **Page: `/admin/settings`**
-- Status: Pending
-- UI: Implemented in `app/settings/page.tsx`
-- API: None (mock data only)
-- Pending:
-- Preferences + notifications need API wiring
-- No loading/skeleton states
+- [x] Admin route guard
+- [ ] Preferences wired to API
+- [ ] Notifications wired to API
+- [ ] Save actions wired to API
+- [ ] Loading/skeleton states
 
 **Page: `/admin/settings/dropdown/[item]`**
-- Status: Pending
-- UI: Implemented in `app/settings/dropdown/[item]/page.tsx`
-- API: None (mock data only)
-- Pending:
-- Dropdown list items CRUD APIs
-- No loading/skeleton states
+- [x] Admin route guard
+- [ ] Dropdown list items wired to API
+- [ ] Create/Edit/Delete wired to API
+- [ ] Loading/skeleton states
