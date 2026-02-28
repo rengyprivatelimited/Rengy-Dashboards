@@ -1,10 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Bell, ChevronDown, Mail, MapPin, Pencil, Search, UserRound, ArrowLeft } from "lucide-react";
+import { Bell, ChevronDown, Mail, MapPin, Pencil, Search, UserRound, ArrowLeft, SendHorizonal } from "lucide-react";
 import { RootSidebar } from "@/components/RootSidebar";
 import { useParams, useRouter } from "next/navigation";
-import { getFinTechPartner, type FinTechPartnerDetail } from "@/features/admin/api/fintech-partners";
+import {
+  buildFinTechExportUrl,
+  getFinTechPartner,
+  sendFinTechChatMessage,
+  updateFinTechPartner,
+  type FinTechPartnerDetail,
+} from "@/features/admin/api/fintech-partners";
 
 type Tab = "overview" | "account" | "chat";
 
@@ -30,6 +36,22 @@ export default function FinTechPartnerDetailPage() {
   const params = useParams<{ partnerId: string }>();
   const [tab, setTab] = useState<Tab>("overview");
   const [partner, setPartner] = useState<FinTechPartnerDetail | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    providerType: "",
+    primaryPerson: "",
+    primaryContact: "",
+    primaryEmail: "",
+    address: "",
+    url: "",
+    remarks: "",
+    foundedIn: "",
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [chatMessage, setChatMessage] = useState("");
+  const [chatLog, setChatLog] = useState<Array<{ id: string; message: string }>>([]);
 
   const partnerId = useMemo(() => {
     const raw = params?.partnerId ?? "";
@@ -47,6 +69,17 @@ export default function FinTechPartnerDetailPage() {
         const result = await getFinTechPartner(partnerId);
         if (!isActive) return;
         setPartner(result);
+        setEditForm({
+          name: result.name ?? "",
+          providerType: result.type ?? "",
+          primaryPerson: result.poc ?? "",
+          primaryContact: result.phone ?? "",
+          primaryEmail: result.email ?? "",
+          address: result.address ?? "",
+          url: result.website ?? "",
+          remarks: result.remarks ?? "",
+          foundedIn: result.foundedIn ?? "",
+        });
       } catch (error) {
         console.error("Failed to load fin-tech partner", error);
       }
@@ -65,6 +98,49 @@ export default function FinTechPartnerDetailPage() {
   const partnerEmail = partner?.email ?? "";
   const partnerPhone = partner?.phone ?? "";
   const partnerLogoText = partner?.name ? partner.name.slice(0, 4).toLowerCase() : "";
+
+  const handleSave = async () => {
+    if (!partnerId) return;
+    setIsSaving(true);
+    setActionError(null);
+    try {
+      await updateFinTechPartner(partnerId, editForm);
+      setPartner((prev) =>
+        prev
+          ? {
+              ...prev,
+              name: editForm.name || prev.name,
+              type: editForm.providerType || prev.type,
+              poc: editForm.primaryPerson || prev.poc,
+              phone: editForm.primaryContact || prev.phone,
+              email: editForm.primaryEmail || prev.email,
+              address: editForm.address || prev.address,
+              website: editForm.url || prev.website,
+              remarks: editForm.remarks || prev.remarks,
+              foundedIn: editForm.foundedIn || prev.foundedIn,
+            }
+          : prev,
+      );
+      setEditOpen(false);
+    } catch (error) {
+      console.warn("Failed to update fin-tech partner", error);
+      setActionError("Unable to save partner details right now.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    const message = chatMessage.trim();
+    if (!message || !partnerId) return;
+    setChatMessage("");
+    try {
+      await sendFinTechChatMessage({ leadId: partnerId, message });
+      setChatLog((prev) => [{ id: `${Date.now()}`, message }, ...prev]);
+    } catch (error) {
+      console.warn("Failed to send chat message", error);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#eceef2] text-[#171b24]">
@@ -96,7 +172,10 @@ export default function FinTechPartnerDetailPage() {
                   {isLoading ? <span className="inline-block h-4 w-28 rounded bg-[#e3e7ee]" /> : partnerName}
                 </h1>
               </button>
-              <button className="inline-flex h-9 items-center gap-1 rounded-full border border-[#cfd6e3] bg-white px-4 text-[13px] text-[#5b6474]">
+              <button
+                className="inline-flex h-9 items-center gap-1 rounded-full border border-[#cfd6e3] bg-white px-4 text-[13px] text-[#5b6474]"
+                onClick={() => window.open(buildFinTechExportUrl(), "_blank", "noopener,noreferrer")}
+              >
                 Export
                 <ChevronDown className="h-4 w-4" />
               </button>
@@ -141,7 +220,9 @@ export default function FinTechPartnerDetailPage() {
                         ) : (
                           <h2 className="text-[32px] font-semibold leading-none text-[#222938]">{partnerName}</h2>
                         )}
-                        <Pencil className="h-4 w-4 text-[#6e7584]" />
+                        <button onClick={() => setEditOpen(true)}>
+                          <Pencil className="h-4 w-4 text-[#6e7584]" />
+                        </button>
                       </div>
                       <div className="mt-3 text-[13px] text-[#7e8696]">
                         {isLoading ? (
@@ -187,7 +268,9 @@ export default function FinTechPartnerDetailPage() {
                   <div className="mb-6 flex items-center gap-4">
                     <div className="rounded-xl bg-[#edeafd] p-3 text-[#1f243b]"><UserRound className="h-5 w-5" /></div>
                     <h3 className="text-[16px] font-semibold leading-none text-[#1f2533]">Business Details</h3>
-                    <Pencil className="h-4 w-4 text-[#6e7584]" />
+                    <button onClick={() => setEditOpen(true)}>
+                      <Pencil className="h-4 w-4 text-[#6e7584]" />
+                    </button>
                   </div>
                   <div className="grid grid-cols-1 gap-x-20 gap-y-10 md:grid-cols-2">
                     <DetailStat label="Email Address" value={partnerEmail || "-"} isLoading={isLoading} />
@@ -201,7 +284,9 @@ export default function FinTechPartnerDetailPage() {
                   <div className="mb-6 flex items-center gap-4">
                     <div className="rounded-xl bg-[#edeafd] p-3 text-[#1f243b]"><UserRound className="h-5 w-5" /></div>
                     <h3 className="text-[16px] font-semibold leading-none text-[#1f2533]">Performance Overview</h3>
-                    <Pencil className="h-4 w-4 text-[#6e7584]" />
+                    <button onClick={() => setEditOpen(true)}>
+                      <Pencil className="h-4 w-4 text-[#6e7584]" />
+                    </button>
                   </div>
                   <div className="grid grid-cols-1 gap-x-20 gap-y-10 md:grid-cols-2">
                     <DetailStat label="Approval Rate" value={partner?.approvalRate ?? "-"} isLoading={isLoading} />
@@ -229,18 +314,174 @@ export default function FinTechPartnerDetailPage() {
             ) : null}
 
             {tab === "account" ? (
-              <div className="rounded-2xl border border-[#e3e7ee] bg-white p-6 text-base text-[#6f7787]">
-                Account Settings content.
+              <div className="rounded-2xl border border-[#e3e7ee] bg-white p-6">
+                <div className="mb-6 flex items-center justify-between">
+                  <div>
+                    <div className="text-[18px] font-semibold text-[#1f2533]">Account Settings</div>
+                    <div className="text-[12px] text-[#8b93a2]">Partner account details</div>
+                  </div>
+                  <button onClick={() => setEditOpen(true)} className="text-[#6e7584]">
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 gap-x-16 gap-y-6 md:grid-cols-2">
+                  <DetailStat label="Partner Name" value={partnerName || "-"} isLoading={isLoading} />
+                  <DetailStat label="Type" value={partner?.type ?? "-"} isLoading={isLoading} />
+                  <DetailStat label="Primary Contact" value={partnerPoc || "-"} isLoading={isLoading} />
+                  <DetailStat label="Primary Email" value={partnerEmail || "-"} isLoading={isLoading} />
+                  <DetailStat label="Primary Phone" value={partnerPhone || "-"} isLoading={isLoading} />
+                  <DetailStat label="Website" value={partner?.website ?? "-"} isLoading={isLoading} />
+                  <DetailStat label="Address" value={partner?.address ?? "-"} isLoading={isLoading} />
+                  <DetailStat label="Founded In" value={partner?.foundedIn ?? "-"} isLoading={isLoading} />
+                </div>
               </div>
             ) : null}
             {tab === "chat" ? (
-              <div className="rounded-2xl border border-[#e3e7ee] bg-white p-6 text-base text-[#6f7787]">
-                Chat content.
+              <div className="rounded-2xl border border-[#e3e7ee] bg-white">
+                <div className="border-b border-[#e3e7ee] px-5 py-4">
+                  <div className="text-[18px] font-semibold text-[#1f2533]">Chat</div>
+                  <div className="text-[12px] text-[#8b93a2]">Send a message to this partner</div>
+                </div>
+                <div className="min-h-[320px] space-y-3 px-5 py-4 text-[12px] text-[#4b5563]">
+                  {chatLog.length === 0 ? (
+                    <div className="rounded-md border border-[#e6eaf1] bg-[#fafbfc] px-3 py-3 text-[12px] text-[#8b93a2]">
+                      No messages yet.
+                    </div>
+                  ) : (
+                    chatLog.map((item) => (
+                      <div key={item.id} className="rounded-xl border border-[#e6eaf1] bg-[#f8fafc] px-3 py-2">
+                        {item.message}
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="flex items-center gap-2 border-t border-[#e3e7ee] px-5 py-4">
+                  <input
+                    value={chatMessage}
+                    onChange={(event) => setChatMessage(event.target.value)}
+                    placeholder="Type a message"
+                    className="h-9 flex-1 rounded-md border border-[#d7dde8] px-3 text-[12px] outline-none"
+                  />
+                  <button
+                    className="inline-flex h-9 items-center gap-2 rounded-md bg-[#11163f] px-3 text-[12px] font-semibold text-white"
+                    onClick={handleSendMessage}
+                  >
+                    Send
+                    <SendHorizonal className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             ) : null}
           </section>
         </main>
       </div>
+
+      {editOpen ? (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
+          <aside className="flex h-full w-full max-w-[380px] flex-col border-l border-[#d7dde8] bg-white shadow-[-12px_0_28px_rgba(2,6,23,0.15)]">
+            <div className="flex items-center justify-between border-b border-[#e4e7ee] px-4 py-3">
+              <div className="text-[20px] font-medium text-[#1b2230]">Edit Partner</div>
+              <button className="rounded border border-[#ced4df] p-1 text-[#5a6373]" onClick={() => setEditOpen(false)}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-3 px-4 py-4 text-[11px] text-[#2b3445]">
+              {actionError ? (
+                <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+                  {actionError}
+                </div>
+              ) : null}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block font-semibold">Partner Name*</label>
+                  <input
+                    value={editForm.name}
+                    onChange={(event) => setEditForm((prev) => ({ ...prev, name: event.target.value }))}
+                    className="h-8 w-full rounded border border-[#d5dbe6] px-2"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block font-semibold">Type</label>
+                  <input
+                    value={editForm.providerType}
+                    onChange={(event) => setEditForm((prev) => ({ ...prev, providerType: event.target.value }))}
+                    className="h-8 w-full rounded border border-[#d5dbe6] px-2"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block font-semibold">Primary Contact Name</label>
+                  <input
+                    value={editForm.primaryPerson}
+                    onChange={(event) => setEditForm((prev) => ({ ...prev, primaryPerson: event.target.value }))}
+                    className="h-8 w-full rounded border border-[#d5dbe6] px-2"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block font-semibold">Primary Contact</label>
+                  <input
+                    value={editForm.primaryContact}
+                    onChange={(event) => setEditForm((prev) => ({ ...prev, primaryContact: event.target.value }))}
+                    className="h-8 w-full rounded border border-[#d5dbe6] px-2"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block font-semibold">Primary Email</label>
+                  <input
+                    value={editForm.primaryEmail}
+                    onChange={(event) => setEditForm((prev) => ({ ...prev, primaryEmail: event.target.value }))}
+                    className="h-8 w-full rounded border border-[#d5dbe6] px-2"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block font-semibold">Website</label>
+                  <input
+                    value={editForm.url}
+                    onChange={(event) => setEditForm((prev) => ({ ...prev, url: event.target.value }))}
+                    className="h-8 w-full rounded border border-[#d5dbe6] px-2"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block font-semibold">Address</label>
+                  <input
+                    value={editForm.address}
+                    onChange={(event) => setEditForm((prev) => ({ ...prev, address: event.target.value }))}
+                    className="h-8 w-full rounded border border-[#d5dbe6] px-2"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block font-semibold">Founded In</label>
+                  <input
+                    value={editForm.foundedIn}
+                    onChange={(event) => setEditForm((prev) => ({ ...prev, foundedIn: event.target.value }))}
+                    className="h-8 w-full rounded border border-[#d5dbe6] px-2"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block font-semibold">Remarks</label>
+                <textarea
+                  rows={4}
+                  value={editForm.remarks}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, remarks: event.target.value }))}
+                  className="w-full rounded border border-[#d5dbe6] p-2 text-[11px]"
+                />
+              </div>
+            </div>
+            <div className="mt-auto grid grid-cols-2 gap-2 px-4 pb-5 pt-2">
+              <button className="h-8 rounded border border-[#cfd4df] bg-white text-[11px] font-semibold text-[#30384a]" onClick={() => setEditOpen(false)}>
+                Cancel
+              </button>
+              <button
+                className="h-8 rounded bg-[#11163f] text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:bg-[#9ca3b1]"
+                onClick={handleSave}
+                disabled={isSaving}
+              >
+                {isSaving ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </aside>
+        </div>
+      ) : null}
     </div>
   );
 }

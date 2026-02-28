@@ -67,6 +67,15 @@ export type VendorDetailData = {
   };
 };
 
+export type VendorDetailUpdateInput = {
+  vendorCode?: string;
+  vendorName?: string;
+  pocName?: string;
+  pocEmail?: string;
+  pocPhone?: string;
+  address?: string;
+};
+
 function toObject(value: unknown): Record<string, unknown> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     return value as Record<string, unknown>;
@@ -221,6 +230,20 @@ function mapVendorDetailFromSections(sections: VendorDetailSections): VendorDeta
   };
 }
 
+function mapPerformanceFromDashboard(payload: unknown): Partial<VendorDetail["performance"]> {
+  const root = toObject(payload);
+  const data = root.data ?? root.list ?? root;
+  const entry = Array.isArray(data) ? toObject(data[0]) : toObject(data);
+  return {
+    totalAssigned: toStringValue(firstNonEmptyString(entry.totalProjects, entry.totalAssigned, entry.totalProjectsAssigned), ""),
+    completed: toStringValue(firstNonEmptyString(entry.completedProjects, entry.projectsCompleted), ""),
+    ongoing: toStringValue(firstNonEmptyString(entry.ongoingProjects, entry.projectsOngoing), ""),
+    avgInstallTime: toStringValue(firstNonEmptyString(entry.avgInstallTime, entry.avgProgress), ""),
+    lastAssigned: toStringValue(firstNonEmptyString(entry.lastProjectAssigned, entry.lastAssignedDate), ""),
+    delayed: toStringValue(firstNonEmptyString(entry.delayedProjects, entry.delayedProject), ""),
+  };
+}
+
 function mapProjectHistory(item: unknown): VendorProjectHistory {
   const row = toObject(item);
   return {
@@ -244,24 +267,42 @@ function mapTicketHistory(item: unknown): VendorTicketHistory {
 }
 
 export async function getVendorDetailData(vendorId: string): Promise<VendorDetailData> {
-  const [detailResponse, projectsResponse, ticketsResponse] = await Promise.all([
+  const [detailResponse, projectsResponse, ticketsResponse, dashboardResponse] = await Promise.allSettled([
     apiRequest<unknown>(`/vendors/${vendorId}/detail`, { method: "GET" }),
     apiRequest<unknown>(`/vendors/${vendorId}/project`, { method: "GET" }),
     apiRequest<unknown>(`/vendors/${vendorId}/ticket`, { method: "GET" }),
+    apiRequest<unknown>(`/vendors/dashboard/${vendorId}`, { method: "GET" }),
   ]);
 
-  const detailRoot = toObject(detailResponse);
+  if (detailResponse.status !== "fulfilled") {
+    throw detailResponse.reason;
+  }
+
+  const detailRoot = toObject(detailResponse.value);
   const detailList = detailRoot.data ?? detailRoot.list ?? detailRoot;
   const overview = pickSection(detailList, "overview");
   const performance = pickSection(detailList, "performance_overview");
   const reviewSection = pickSection(detailList, "customer_review");
   const distribution = toObject(reviewSection?.distribution);
   const reviews = Array.isArray(reviewSection?.reviews) ? reviewSection?.reviews : [];
+  const baseDetail = mapVendorDetailFromSections({ overview, performance, reviews: reviewSection });
+  const dashboardPerformance =
+    dashboardResponse.status === "fulfilled" ? mapPerformanceFromDashboard(dashboardResponse.value) : {};
 
   return {
-    detail: mapVendorDetailFromSections({ overview, performance, reviews: reviewSection }),
-    projects: pickList(projectsResponse).map(mapProjectHistory),
-    tickets: pickList(ticketsResponse).map(mapTicketHistory),
+    detail: {
+      ...baseDetail,
+      performance: {
+        totalAssigned: dashboardPerformance.totalAssigned || baseDetail.performance.totalAssigned,
+        completed: dashboardPerformance.completed || baseDetail.performance.completed,
+        ongoing: dashboardPerformance.ongoing || baseDetail.performance.ongoing,
+        avgInstallTime: dashboardPerformance.avgInstallTime || baseDetail.performance.avgInstallTime,
+        lastAssigned: dashboardPerformance.lastAssigned || baseDetail.performance.lastAssigned,
+        delayed: dashboardPerformance.delayed || baseDetail.performance.delayed,
+      },
+    },
+    projects: projectsResponse.status === "fulfilled" ? pickList(projectsResponse.value).map(mapProjectHistory) : [],
+    tickets: ticketsResponse.status === "fulfilled" ? pickList(ticketsResponse.value).map(mapTicketHistory) : [],
     review: {
       average: toStringValue(reviewSection?.average, "0"),
       total: toStringValue(reviewSection?.total, "0"),
@@ -284,4 +325,45 @@ export async function getVendorDetailData(vendorId: string): Promise<VendorDetai
       }),
     },
   };
+}
+
+export async function updateVendorDetail(vendorId: string, input: VendorDetailUpdateInput): Promise<unknown> {
+  const formData = new FormData();
+  formData.append("userType", "2");
+
+  if (input.vendorCode) {
+    formData.append("vendorCode", input.vendorCode);
+  }
+  if (input.vendorName) {
+    formData.append("companyName", input.vendorName);
+  }
+  if (input.pocName) {
+    formData.append("name", input.pocName);
+  }
+  if (input.pocEmail) {
+    formData.append("email", input.pocEmail);
+    formData.append("businessEmail", input.pocEmail);
+  }
+  if (input.pocPhone) {
+    formData.append("mobileNumber", input.pocPhone);
+    formData.append("businessMobile", input.pocPhone);
+  }
+  if (input.address) {
+    formData.append("companyAddress", input.address);
+  }
+
+  return apiRequest(`/users/${vendorId}/profile`, {
+    method: "PUT",
+    body: formData,
+  });
+}
+
+export async function updateVendorStatus(vendorId: string, status: "deactivate" | "delete"): Promise<unknown> {
+  if (status === "delete") {
+    return apiRequest(`/users/${vendorId}`, { method: "DELETE" });
+  }
+  return apiRequest(`/users/${vendorId}`, {
+    method: "PUT",
+    body: { status: 0 },
+  });
 }

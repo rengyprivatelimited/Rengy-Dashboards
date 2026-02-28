@@ -1,4 +1,4 @@
-import { apiRequest } from "@/lib/api/client";
+import { apiRequest, getApiBaseUrl, getApiProxyBaseUrl } from "@/lib/api/client";
 
 export type LoanStatus =
   | "Documents Pending"
@@ -52,10 +52,23 @@ export type LoanStatusRow = LoanRequestRow & {
 export type LoanListQuery = {
   paymentType?: string;
   search?: string;
+  status?: string;
   export?: string;
   perPage?: number;
   page?: number;
   loanApprove: 0 | 1;
+};
+
+export type LoanListPagination = {
+  page: number;
+  perPage: number;
+  total: number;
+  totalPages: number;
+};
+
+export type LoanListResult<T> = {
+  rows: T[];
+  pagination: LoanListPagination;
 };
 
 function toObject(value: unknown): Record<string, unknown> {
@@ -111,6 +124,34 @@ function pickList(payload: unknown): unknown[] {
   if (Array.isArray(results.data)) return results.data;
 
   return [];
+}
+
+function pickPagination(payload: unknown, fallback: LoanListPagination): LoanListPagination {
+  const root = toObject(payload);
+  const data = root.data;
+
+  let pagination: Record<string, unknown> = {};
+
+  if (Array.isArray(data)) {
+    const paginationEntry = data.find((entry) => toObject(entry).id === "pagination");
+    const list = toObject(paginationEntry).list;
+    if (Array.isArray(list) && list.length > 0) {
+      pagination = toObject(list[0]);
+    } else {
+      pagination = toObject(paginationEntry);
+    }
+  } else {
+    pagination = toObject(root.pagination ?? toObject(data).pagination ?? root.meta ?? toObject(data).meta);
+  }
+
+  const page = toNumber(pagination.page ?? pagination.currentPage ?? pagination.current_page) ?? fallback.page;
+  const perPage = toNumber(pagination.perPage ?? pagination.per_page ?? pagination.pageSize) ?? fallback.perPage;
+  const total = toNumber(pagination.total ?? pagination.totalRecords ?? pagination.total_items) ?? fallback.total;
+  const totalPages =
+    toNumber(pagination.totalPages ?? pagination.total_pages) ??
+    (perPage > 0 ? Math.max(1, Math.ceil(total / perPage)) : fallback.totalPages);
+
+  return { page, perPage, total, totalPages };
 }
 
 function formatDate(value: unknown): string {
@@ -358,13 +399,14 @@ function mapLoanStatusRow(item: unknown): LoanStatusRow {
   };
 }
 
-export async function getLoanRequests(query: LoanListQuery): Promise<LoanRequestRow[]> {
-  const { paymentType = "", search = "", export: exportValue = "", perPage = 10, page = 1 } = query;
+export async function getLoanRequests(query: LoanListQuery): Promise<LoanListResult<LoanRequestRow>> {
+  const { paymentType = "", search = "", status = "", export: exportValue = "", perPage = 10, page = 1 } = query;
   const response = await apiRequest<unknown>("/loans", {
     method: "GET",
     query: {
       paymentType,
       search,
+      status,
       export: exportValue,
       per_page: perPage,
       page,
@@ -372,16 +414,25 @@ export async function getLoanRequests(query: LoanListQuery): Promise<LoanRequest
     },
   });
 
-  return pickList(response).map(mapLoanRequestRow);
+  const rows = pickList(response).map(mapLoanRequestRow);
+  const pagination = pickPagination(response, {
+    page,
+    perPage,
+    total: rows.length,
+    totalPages: 1,
+  });
+
+  return { rows, pagination };
 }
 
-export async function getLoanStatuses(query: LoanListQuery): Promise<LoanStatusRow[]> {
-  const { paymentType = "", search = "", export: exportValue = "", perPage = 10, page = 1 } = query;
+export async function getLoanStatuses(query: LoanListQuery): Promise<LoanListResult<LoanStatusRow>> {
+  const { paymentType = "", search = "", status = "", export: exportValue = "", perPage = 10, page = 1 } = query;
   const response = await apiRequest<unknown>("/loans", {
     method: "GET",
     query: {
       paymentType,
       search,
+      status,
       export: exportValue,
       per_page: perPage,
       page,
@@ -389,7 +440,52 @@ export async function getLoanStatuses(query: LoanListQuery): Promise<LoanStatusR
     },
   });
 
-  return pickList(response).map(mapLoanStatusRow);
+  const rows = pickList(response).map(mapLoanStatusRow);
+  const pagination = pickPagination(response, {
+    page,
+    perPage,
+    total: rows.length,
+    totalPages: 1,
+  });
+
+  return { rows, pagination };
 }
 
 export const LOAN_STATUS_OPTIONS = STATUS_OPTIONS;
+
+export async function updateLoanStatus(payload: { id: number; status: LoanStatus; remarks?: string }): Promise<unknown> {
+  return apiRequest(`/loans/${payload.id}`, {
+    method: "PUT",
+    body: {
+      status: payload.status,
+      remarks: payload.remarks,
+    },
+  });
+}
+
+export async function deleteLoan(id: number): Promise<unknown> {
+  return apiRequest(`/loans/${id}`, { method: "DELETE" });
+}
+
+export async function uploadLoanAttachments(id: number, files: File[]): Promise<unknown> {
+  const formData = new FormData();
+  files.forEach((file) => {
+    formData.append("documents[]", file);
+  });
+  return apiRequest(`/loans/${id}`, {
+    method: "PUT",
+    body: formData,
+  });
+}
+
+export function buildLoanDownloadUrl(ids: Array<string | number>, fields = "documents"): string {
+  const base = typeof window === "undefined" ? getApiBaseUrl() : getApiProxyBaseUrl();
+  const url = base.startsWith("http")
+    ? new URL(`${base}/common/files/download`)
+    : new URL(`${base}/common/files/download`, window.location.origin);
+
+  url.searchParams.set("module", "loans");
+  url.searchParams.set("ids", ids.join(","));
+  url.searchParams.set("fields", fields);
+  return url.toString();
+}

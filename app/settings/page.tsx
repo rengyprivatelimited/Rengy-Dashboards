@@ -2,11 +2,12 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Bell, Building2, ChevronDown, Search, X } from "lucide-react";
 import { RootSidebar } from "@/components/RootSidebar";
 import { mockData } from "@/lib/mock-data";
+import { getAccountSettings, saveAccountSettings } from "@/features/admin/api/account-settings";
 
 type SettingsTab = "dashboard" | "notifications" | "documents" | "dropdown";
 
@@ -85,6 +86,52 @@ export default function SettingsPage() {
   const [termsOpen, setTermsOpen] = useState(false);
   const [slaDocOpen, setSlaDocOpen] = useState(false);
   const [slaDaysOpen, setSlaDaysOpen] = useState(false);
+  const [settings, setSettings] = useState<Record<string, boolean>>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const userId = 11;
+
+  const dashboardKeys = useMemo(() => dashboardPrefs.map((label) => `dashboard:${label}`), []);
+  const notificationKeys = useMemo(() => notificationPrefs.map((label) => `notification:${label}`), []);
+
+  useEffect(() => {
+    let isActive = true;
+    setIsLoading(true);
+    getAccountSettings(userId)
+      .then((result) => {
+        if (!isActive) return;
+        setSettings(result.settings);
+      })
+      .catch((error) => {
+        console.warn("Failed to load account settings", error);
+        if (isActive) setActionError("Unable to load settings.");
+      })
+      .finally(() => {
+        if (isActive) setIsLoading(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [userId]);
+
+  const toggleSetting = (key: string) => {
+    setSettings((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    setActionError(null);
+    try {
+      await saveAccountSettings({ userId, settings });
+    } catch (error) {
+      console.warn("Failed to save account settings", error);
+      setActionError("Unable to save settings right now.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#eceef2] text-[#171b24]">
@@ -132,12 +179,34 @@ export default function SettingsPage() {
                   <span>View</span>
                 </div>
                 <div className="space-y-3 px-3 py-4">
-                  {dashboardPrefs.map((row) => (
-                    <div key={row} className="grid grid-cols-[1fr_120px] items-center text-[14px] text-[#25314a]">
-                      <span>{row}</span>
-                      <input type="checkbox" className="h-5 w-5 rounded border-[#b7c1d2]" />
-                    </div>
-                  ))}
+                  {isLoading
+                    ? Array.from({ length: 4 }).map((_, idx) => (
+                        <div key={`dash-skel-${idx}`} className="grid grid-cols-[1fr_120px] items-center">
+                          <div className="h-3 w-40 rounded bg-[#e3e7ee]" />
+                          <div className="h-5 w-5 rounded bg-[#e3e7ee]" />
+                        </div>
+                      ))
+                    : dashboardPrefs.map((row, idx) => (
+                        <div key={row} className="grid grid-cols-[1fr_120px] items-center text-[14px] text-[#25314a]">
+                          <span>{row}</span>
+                          <input
+                            type="checkbox"
+                            className="h-5 w-5 rounded border-[#b7c1d2]"
+                            checked={settings[dashboardKeys[idx]] ?? false}
+                            onChange={() => toggleSetting(dashboardKeys[idx])}
+                          />
+                        </div>
+                      ))}
+                </div>
+                <div className="border-t border-[#e4e7ee] px-3 py-3">
+                  {actionError ? <div className="mb-2 text-[12px] text-[#b91c1c]">{actionError}</div> : null}
+                  <button
+                    className="h-9 rounded bg-[#11163f] px-4 text-[14px] font-semibold text-white disabled:cursor-not-allowed disabled:bg-[#9ca3b1]"
+                    onClick={handleSave}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? "Saving..." : "Save"}
+                  </button>
                 </div>
               </div>
             ) : null}
@@ -149,12 +218,34 @@ export default function SettingsPage() {
                   <span>On</span>
                 </div>
                 <div className="space-y-3 px-3 py-4">
-                  {notificationPrefs.map((row) => (
-                    <div key={row} className="grid grid-cols-[1fr_120px] items-center text-[14px] text-[#25314a]">
-                      <span>{row}</span>
-                      <input type="checkbox" className="h-5 w-5 rounded border-[#b7c1d2]" />
-                    </div>
-                  ))}
+                  {isLoading
+                    ? Array.from({ length: 4 }).map((_, idx) => (
+                        <div key={`notif-skel-${idx}`} className="grid grid-cols-[1fr_120px] items-center">
+                          <div className="h-3 w-48 rounded bg-[#e3e7ee]" />
+                          <div className="h-5 w-5 rounded bg-[#e3e7ee]" />
+                        </div>
+                      ))
+                    : notificationPrefs.map((row, idx) => (
+                        <div key={row} className="grid grid-cols-[1fr_120px] items-center text-[14px] text-[#25314a]">
+                          <span>{row}</span>
+                          <input
+                            type="checkbox"
+                            className="h-5 w-5 rounded border-[#b7c1d2]"
+                            checked={settings[notificationKeys[idx]] ?? false}
+                            onChange={() => toggleSetting(notificationKeys[idx])}
+                          />
+                        </div>
+                      ))}
+                </div>
+                <div className="border-t border-[#e4e7ee] px-3 py-3">
+                  {actionError ? <div className="mb-2 text-[12px] text-[#b91c1c]">{actionError}</div> : null}
+                  <button
+                    className="h-9 rounded bg-[#11163f] px-4 text-[14px] font-semibold text-white disabled:cursor-not-allowed disabled:bg-[#9ca3b1]"
+                    onClick={handleSave}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? "Saving..." : "Save"}
+                  </button>
                 </div>
               </div>
             ) : null}

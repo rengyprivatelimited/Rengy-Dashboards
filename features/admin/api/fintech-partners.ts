@@ -1,4 +1,4 @@
-import { apiRequest } from "@/lib/api/client";
+import { apiRequest, getApiBaseUrl, getApiProxyBaseUrl } from "@/lib/api/client";
 
 export type FinTechPartner = {
   id: number;
@@ -33,8 +33,35 @@ export type FinTechPartnerDetail = FinTechPartner & {
 
 export type FinTechPartnerQuery = {
   search?: string;
+  providerType?: string | number;
+  location?: string;
   page?: number;
   perPage?: number;
+};
+
+export type FinTechPartnerPagination = {
+  page: number;
+  perPage: number;
+  total: number;
+  totalPages: number;
+};
+
+export type FinTechPartnerListResult = {
+  rows: FinTechPartner[];
+  pagination: FinTechPartnerPagination;
+};
+
+export type FinTechPartnerInput = {
+  name: string;
+  providerType?: string;
+  primaryPerson?: string;
+  primaryContact?: string;
+  primaryEmail?: string;
+  address?: string;
+  url?: string;
+  remarks?: string;
+  foundedIn?: string;
+  partnershipDate?: string;
 };
 
 function toObject(value: unknown): Record<string, unknown> {
@@ -90,6 +117,33 @@ function pickList(payload: unknown): unknown[] {
   if (Array.isArray(results.data)) return results.data;
 
   return [];
+}
+
+function pickPagination(payload: unknown, fallback: FinTechPartnerPagination): FinTechPartnerPagination {
+  const root = toObject(payload);
+  const data = root.data;
+
+  let pagination: Record<string, unknown> = {};
+  if (Array.isArray(data)) {
+    const paginationEntry = data.find((entry) => toObject(entry).id === "pagination");
+    const list = toObject(paginationEntry).list;
+    if (Array.isArray(list) && list.length > 0) {
+      pagination = toObject(list[0]);
+    } else {
+      pagination = toObject(paginationEntry);
+    }
+  } else {
+    pagination = toObject(root.pagination ?? toObject(data).pagination ?? root.meta ?? toObject(data).meta);
+  }
+
+  const page = toNumber(pagination.page ?? pagination.currentPage ?? pagination.current_page) ?? fallback.page;
+  const perPage = toNumber(pagination.perPage ?? pagination.per_page ?? pagination.pageSize) ?? fallback.perPage;
+  const total = toNumber(pagination.total ?? pagination.totalRecords ?? pagination.total_items) ?? fallback.total;
+  const totalPages =
+    toNumber(pagination.totalPages ?? pagination.total_pages) ??
+    (perPage > 0 ? Math.max(1, Math.ceil(total / perPage)) : fallback.totalPages);
+
+  return { page, perPage, total, totalPages };
 }
 
 function numberLabel(value: unknown): string {
@@ -162,18 +216,27 @@ function mapPartnerDetail(item: unknown): FinTechPartnerDetail {
   };
 }
 
-export async function getFinTechPartners(query: FinTechPartnerQuery): Promise<FinTechPartner[]> {
-  const { search = "", page = 1, perPage = 10 } = query;
+export async function getFinTechPartners(query: FinTechPartnerQuery): Promise<FinTechPartnerListResult> {
+  const { search = "", providerType = "", location = "", page = 1, perPage = 10 } = query;
   const response = await apiRequest<unknown>("/loan-providers", {
     method: "GET",
     query: {
       search,
+      providerType,
+      location,
       page,
       per_page: perPage,
     },
   });
 
-  return pickList(response).map(mapPartner);
+  const rows = pickList(response).map(mapPartner);
+  const pagination = pickPagination(response, {
+    page,
+    perPage,
+    total: rows.length,
+    totalPages: 1,
+  });
+  return { rows, pagination };
 }
 
 export async function getFinTechPartner(id: number): Promise<FinTechPartnerDetail> {
@@ -184,4 +247,45 @@ export async function getFinTechPartner(id: number): Promise<FinTechPartnerDetai
   const list = pickList(response);
   const item = list[0] ?? response;
   return mapPartnerDetail(item);
+}
+
+export async function createFinTechPartner(payload: FinTechPartnerInput): Promise<unknown> {
+  const formData = new FormData();
+  Object.entries(payload).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    formData.append(key, String(value));
+  });
+  return apiRequest("/loan-providers", { method: "POST", body: formData });
+}
+
+export async function updateFinTechPartner(id: number, payload: FinTechPartnerInput): Promise<unknown> {
+  const formData = new FormData();
+  Object.entries(payload).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    formData.append(key, String(value));
+  });
+  return apiRequest(`/loan-providers/${id}`, { method: "PUT", body: formData });
+}
+
+export async function deleteFinTechPartner(id: number): Promise<unknown> {
+  return apiRequest(`/loan-providers/${id}`, { method: "DELETE" });
+}
+
+export async function sendFinTechChatMessage(payload: { leadId: string | number; message: string }): Promise<unknown> {
+  return apiRequest("/chats/create-lead-message", {
+    method: "POST",
+    body: {
+      collectionName: "leadChats",
+      leadId: payload.leadId,
+      message: payload.message,
+    },
+  });
+}
+
+export function buildFinTechExportUrl(search = ""): string {
+  const base = typeof window === "undefined" ? getApiBaseUrl() : getApiProxyBaseUrl();
+  const query = new URLSearchParams();
+  if (search) query.set("search", search);
+  query.set("export", "1");
+  return `${base}/loan-providers?${query.toString()}`;
 }

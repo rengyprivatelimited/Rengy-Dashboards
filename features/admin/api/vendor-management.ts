@@ -1,4 +1,4 @@
-import { apiRequest } from "@/lib/api/client";
+import { apiRequest, getApiBaseUrl, getApiProxyBaseUrl } from "@/lib/api/client";
 
 export type VendorCardRow = {
   id: number;
@@ -44,6 +44,8 @@ export type VendorManagementQuery = {
   adminApproval?: number | boolean;
   requestApproval?: number | boolean;
   requestType?: number | string;
+  includeVendors?: boolean;
+  includeRequests?: boolean;
 };
 
 function toObject(value: unknown): Record<string, unknown> {
@@ -190,21 +192,63 @@ export async function getVendorManagementData(query: VendorManagementQuery = {})
     adminApproval = 1,
     requestApproval = 0,
     requestType = 2,
+    includeVendors = true,
+    includeRequests = true,
   } = query;
 
   const [vendorsResponse, requestsResponse] = await Promise.all([
-    apiRequest<unknown>("/vendors/combined/list", {
-      method: "GET",
-      query: { search, per_page: perPage, page, adminApproval },
-    }),
-    apiRequest<unknown>("/users", {
-      method: "GET",
-      query: { approval: requestApproval, type: requestType },
-    }),
+    includeVendors
+      ? apiRequest<unknown>("/vendors", {
+          method: "GET",
+          query: { search, per_page: perPage, page, adminApproval },
+        })
+      : Promise.resolve({ list: [] }),
+    includeRequests
+      ? apiRequest<unknown>("/users", {
+          method: "GET",
+          query: { approval: requestApproval, type: requestType, search, per_page: perPage, page },
+        })
+      : Promise.resolve({ list: [] }),
   ]);
 
   return {
     vendors: pickList(vendorsResponse).map(mapVendorCard),
     requests: pickList(requestsResponse).map(mapVendorRequest),
   };
+}
+
+export type VendorApprovalPayload = {
+  userId: string | number;
+  approval: 0 | 1;
+};
+
+export async function submitVendorApproval(payload: VendorApprovalPayload): Promise<unknown> {
+  return apiRequest("/users", {
+    method: "PUT",
+    body: payload,
+  });
+}
+
+export type VendorChatPayload = {
+  leadId: string | number;
+  message: string;
+};
+
+export async function sendVendorChatMessage(payload: VendorChatPayload): Promise<unknown> {
+  return apiRequest("/chats/create-lead-message", {
+    method: "POST",
+    body: {
+      collectionName: "leadChats",
+      leadId: payload.leadId,
+      message: payload.message,
+    },
+  });
+}
+
+export function buildVendorExportUrl(search = ""): string {
+  const base = typeof window === "undefined" ? getApiBaseUrl() : getApiProxyBaseUrl();
+  const query = new URLSearchParams();
+  if (search) query.set("search", search);
+  query.set("export", "1");
+  return `${base}/vendors?${query.toString()}`;
 }

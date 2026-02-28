@@ -1,4 +1,4 @@
-import { apiRequest } from "@/lib/api/client";
+import { apiRequest, getApiBaseUrl, getApiProxyBaseUrl } from "@/lib/api/client";
 
 export type ApprovalPriority = "High" | "Medium" | "Low";
 
@@ -67,6 +67,11 @@ export type ApprovalManagementQuery = {
   page?: number;
   perPage?: number;
   stage?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  vendor?: string;
+  category?: string;
+  source?: string;
 };
 
 function pickList(payload: unknown): unknown[] {
@@ -302,19 +307,60 @@ function mapAmcRow(item: unknown): AmcListRow {
 }
 
 export async function getApprovalManagementData(query: ApprovalManagementQuery = {}): Promise<ApprovalManagementData> {
-  const { search = "", page = 1, perPage = 100, stage = 7 } = query;
+  const {
+    search = "",
+    page = 1,
+    perPage = 100,
+    stage = 7,
+    dateFrom = "",
+    dateTo = "",
+    vendor = "",
+    category = "",
+    source = "",
+  } = query;
 
   const [onboardingResponse, installationResponse, amcResponse] = await Promise.all([
     apiRequest<unknown>("/common/admin/approval", {
       method: "GET",
-      query: { search, export: "" },
+      query: {
+        search,
+        export: "",
+        page,
+        per_page: perPage,
+        startDate: dateFrom,
+        endDate: dateTo,
+        vendor,
+        category,
+        source,
+      },
     }),
     apiRequest<unknown>("/projects/combined/payments", {
       method: "GET",
-      query: { export: "", per_page: perPage, page, stage, search },
+      query: {
+        export: "",
+        per_page: perPage,
+        page,
+        stage,
+        search,
+        startDate: dateFrom,
+        endDate: dateTo,
+        vendor,
+        category,
+        source,
+      },
     }),
     apiRequest<unknown>("/amc-requests", {
       method: "GET",
+      query: {
+        search,
+        page,
+        per_page: perPage,
+        startDate: dateFrom,
+        endDate: dateTo,
+        vendor,
+        category,
+        source,
+      },
     }),
   ]);
 
@@ -323,4 +369,25 @@ export async function getApprovalManagementData(query: ApprovalManagementQuery =
     installationRows: pickList(installationResponse).map(mapInstallationRow),
     amcRows: pickList(amcResponse).map(mapAmcRow),
   };
+}
+
+export type ApprovalActionPayload = {
+  action: "approve" | "reject" | "resubmit" | "save";
+  ticketId?: string;
+  projectId?: string;
+  notes?: string;
+  type?: "installation" | "onboarding" | "amc";
+};
+
+export async function submitApprovalAction(payload: ApprovalActionPayload): Promise<unknown> {
+  return apiRequest("/common/admin/approval", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function buildLoanFilesDownloadUrl(ids: string): string {
+  const base = typeof window === "undefined" ? getApiBaseUrl() : getApiProxyBaseUrl();
+  const safeIds = encodeURIComponent(ids);
+  return `${base}/common/files/download?module=loans&ids=${safeIds}&fields=documents`;
 }

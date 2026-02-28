@@ -83,7 +83,7 @@ export default function TeamPermissionsPage() {
   const [modulePermissions, setModulePermissions] = useState<ModulePermission[]>(
     createEmptyModulePermissions(),
   );
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -103,6 +103,7 @@ export default function TeamPermissionsPage() {
 
   useEffect(() => {
     let isMounted = true;
+    setIsLoading(true);
     getMenuMap()
       .then((map) => {
         if (!isMounted) return;
@@ -110,29 +111,6 @@ export default function TeamPermissionsPage() {
       })
       .catch((error) => {
         console.error("Menus API failed. Using fallback data.", error);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!menuMap) return;
-    let isMounted = true;
-    setIsLoading(true);
-    getTeamPermissionsForTeam(activeTeamTab, menuMap)
-      .then((rowsForTeam) => {
-        if (!isMounted) return;
-        if (rowsForTeam.length > 0) {
-          setRoles((prev) => {
-            const filtered = prev.filter((row) => row.team !== activeTeamTab);
-            return [...rowsForTeam, ...filtered];
-          });
-        }
-      })
-      .catch((error) => {
-        console.error("Team roles API failed. Using fallback data.", error);
       })
       .finally(() => {
         if (!isMounted) return;
@@ -142,6 +120,26 @@ export default function TeamPermissionsPage() {
     return () => {
       isMounted = false;
     };
+  }, []);
+
+  const refreshTeamRoles = async (team: TeamTab, map: MenuMap) => {
+    setIsLoading(true);
+    try {
+      const rowsForTeam = await getTeamPermissionsForTeam(team, map);
+      setRoles((prev) => {
+        const filtered = prev.filter((row) => row.team !== team);
+        return [...rowsForTeam, ...filtered];
+      });
+    } catch (error) {
+      console.error("Team roles API failed. Using fallback data.", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!menuMap) return;
+    refreshTeamRoles(activeTeamTab, menuMap);
   }, [activeTeamTab, menuMap]);
 
   const openEdit = (row: PermissionRow, index: number) => {
@@ -199,18 +197,6 @@ export default function TeamPermissionsPage() {
     try {
       if (drawerMode === "edit" && editingIndex !== null) {
         const target = roles[editingIndex];
-        setRoles((prev) =>
-          prev.map((row, index) =>
-            index === editingIndex
-              ? {
-                  ...row,
-                  role: trimmedRole,
-                  modulePermissions: nextPermissions,
-                }
-              : row,
-          ),
-        );
-
         if (target?.id) {
           await updateRoleWithPermissions(
             {
@@ -222,12 +208,14 @@ export default function TeamPermissionsPage() {
             menuMap,
           );
         }
+        if (menuMap) {
+          await refreshTeamRoles(activeTeamTab, menuMap);
+        }
       }
 
       if (drawerMode === "create") {
-        let createdRow: PermissionRow | null = null;
         try {
-          createdRow = await createRoleWithPermissions(
+          await createRoleWithPermissions(
             {
               roleName: trimmedRole,
               team: activeTeamTab,
@@ -237,19 +225,21 @@ export default function TeamPermissionsPage() {
           );
         } catch (error) {
           console.error("Create role API failed. Using fallback data.", error);
+          setRoles((prev) => [
+            {
+              role: trimmedRole,
+              modulePermissions: nextPermissions,
+              users: "-",
+              name: "-",
+              dateCreated: formatToday(),
+              team: activeTeamTab,
+            },
+            ...prev,
+          ]);
         }
-
-        setRoles((prev) => [
-          createdRow ?? {
-            role: trimmedRole,
-            modulePermissions: nextPermissions,
-            users: "-",
-            name: "-",
-            dateCreated: formatToday(),
-            team: activeTeamTab,
-          },
-          ...prev,
-        ]);
+        if (menuMap) {
+          await refreshTeamRoles(activeTeamTab, menuMap);
+        }
       }
     } finally {
       setIsSaving(false);

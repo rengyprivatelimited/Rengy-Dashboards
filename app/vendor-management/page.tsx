@@ -4,11 +4,14 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Bell, Building2, CalendarClock, ChevronDown, Mail, MapPin, Phone, Search, Star, User, X } from "lucide-react";
 import { RootSidebar } from "@/components/RootSidebar";
-import { mockData } from "@/lib/mock-data";
-import { getVendorManagementData } from "@/features/admin/api/vendor-management";
-
-const fallbackVendorCards = mockData.vendorManagement.vendors;
-const fallbackVendorRequests = mockData.vendorManagement.requests;
+import {
+  buildVendorExportUrl,
+  getVendorManagementData,
+  sendVendorChatMessage,
+  submitVendorApproval,
+  type VendorCardRow,
+  type VendorRequestRow,
+} from "@/features/admin/api/vendor-management";
 
 function VendorCard({
   id,
@@ -93,37 +96,94 @@ function FilterButton({ label }: { label: string }) {
 
 export default function VendorManagementPage() {
   const [activeTab, setActiveTab] = useState<"vendors" | "requests">("vendors");
-  const [vendorCards, setVendorCards] = useState(fallbackVendorCards);
-  const [vendorRequests, setVendorRequests] = useState(fallbackVendorRequests);
-  const [selectedRequest, setSelectedRequest] = useState<(typeof fallbackVendorRequests)[number] | null>(null);
+  const [vendorCards, setVendorCards] = useState<VendorCardRow[]>([]);
+  const [vendorRequests, setVendorRequests] = useState<VendorRequestRow[]>([]);
+  const [selectedRequest, setSelectedRequest] = useState<VendorRequestRow | null>(null);
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [chatMessage, setChatMessage] = useState("");
 
   useEffect(() => {
     let isMounted = true;
 
-    getVendorManagementData({ search: searchTerm })
+    setIsLoading(true);
+    setLoadError(null);
+    getVendorManagementData({
+      search: searchTerm,
+      page,
+      perPage,
+      includeVendors: activeTab === "vendors",
+      includeRequests: activeTab === "requests",
+    })
       .then((result) => {
         if (!isMounted) return;
-        if (result.vendors.length > 0) setVendorCards(result.vendors);
-        if (result.requests.length > 0) setVendorRequests(result.requests);
+        if (activeTab === "vendors") setVendorCards(result.vendors);
+        if (activeTab === "requests") setVendorRequests(result.requests);
       })
       .catch((error) => {
-        console.error("Vendor management API failed. Using fallback data.", error);
+        console.error("Vendor management API failed.", error);
+        if (!isMounted) return;
+        setLoadError("Failed to load vendor data. Please try again.");
+        setVendorCards([]);
+        setVendorRequests([]);
+      })
+      .finally(() => {
+        if (!isMounted) return;
+        setIsLoading(false);
       });
 
     return () => {
       isMounted = false;
     };
-  }, [searchTerm]);
+  }, [searchTerm, page, perPage, activeTab]);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
       setSearchTerm(searchInput.trim());
+      setPage(1);
     }, 350);
 
     return () => clearTimeout(timeout);
   }, [searchInput]);
+
+  useEffect(() => {
+    if (selectedRequest) {
+      setChatMessage("");
+    }
+  }, [selectedRequest]);
+
+  const canNextPage =
+    (activeTab === "vendors" ? vendorCards : vendorRequests).length >= perPage;
+
+  const handleApproval = async (approval: 0 | 1) => {
+    if (!selectedRequest) return;
+    setActionError(null);
+    try {
+      await submitVendorApproval({ userId: selectedRequest.vendorId, approval });
+      setVendorRequests((prev) => prev.filter((item) => item.id !== selectedRequest.id));
+      setSelectedRequest(null);
+    } catch (error) {
+      console.error("Vendor approval failed", error);
+      setActionError("Approve/Reject failed. API endpoint may be unavailable.");
+    }
+  };
+
+  const handleChatSend = async () => {
+    if (!selectedRequest || !chatMessage.trim()) return;
+    setActionError(null);
+    try {
+      await sendVendorChatMessage({ leadId: selectedRequest.vendorId, message: chatMessage.trim() });
+      setChatMessage("");
+    } catch (error) {
+      console.error("Vendor chat failed", error);
+      setActionError("Chat failed. Please try again.");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#eceef2] text-[#171b24]" suppressHydrationWarning>
@@ -149,6 +209,16 @@ export default function VendorManagementPage() {
 
           <section className="p-4">
             <h1 className="text-[32px] font-semibold leading-none text-[#1d2028]">Vendors</h1>
+            {loadError ? (
+              <div className="mt-3 rounded border border-[#f1c1c1] bg-[#fff5f5] px-3 py-2 text-[13px] text-[#b91c1c]">
+                {loadError}
+              </div>
+            ) : null}
+            {actionError ? (
+              <div className="mt-2 rounded border border-[#f1c1c1] bg-[#fff5f5] px-3 py-2 text-[13px] text-[#b91c1c]">
+                {actionError}
+              </div>
+            ) : null}
 
             <div className="mt-4 flex h-9 w-[330px] rounded border border-[#dde1e8] bg-[#f2f4f7] p-0.5 text-[14px] font-semibold">
               <button
@@ -191,62 +261,113 @@ export default function VendorManagementPage() {
 
             {activeTab === "vendors" ? (
               <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-                {vendorCards.map((card) => (
-                  <VendorCard
-                    key={card.id}
-                    id={card.id}
-                    name={card.name}
-                    rating={card.rating}
-                    compliance={card.compliance}
-                    projects={card.projects}
-                    costRange={card.costRange}
-                    teamSize={card.teamSize}
-                    location={card.location}
-                    userId={card.userId}
-                  />
-                ))}
+                {isLoading
+                  ? Array.from({ length: 6 }).map((_, idx) => (
+                      <div key={`vendor-skel-${idx}`} className="rounded-lg border border-[#eceef2] bg-white p-3">
+                        <div className="h-4 w-24 rounded bg-[#e3e7ee]" />
+                        <div className="mt-3 h-6 w-16 rounded bg-[#e3e7ee]" />
+                        <div className="mt-2 h-[5px] rounded bg-[#e3e7ee]" />
+                        <div className="mt-3 grid grid-cols-2 gap-y-3">
+                          {Array.from({ length: 4 }).map((__, colIdx) => (
+                            <div key={`vendor-skel-${idx}-${colIdx}`}>
+                              <div className="h-3 w-16 rounded bg-[#eef1f6]" />
+                              <div className="mt-2 h-4 w-20 rounded bg-[#e3e7ee]" />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  : vendorCards.map((card) => (
+                      <VendorCard
+                        key={card.id}
+                        id={card.id}
+                        name={card.name}
+                        rating={card.rating}
+                        compliance={card.compliance}
+                        projects={card.projects}
+                        costRange={card.costRange}
+                        teamSize={card.teamSize}
+                        location={card.location}
+                        userId={card.userId}
+                      />
+                    ))}
               </div>
             ) : (
               <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-                {vendorRequests.map((request) => (
-                  <article key={request.id} className="rounded-lg border border-[#dde2eb] bg-white p-1.5">
-                    <div className="rounded-md border border-[#d7deea] bg-[#eef2ff] px-2.5 py-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="rounded border border-[#b9c3d2] p-1 text-[#1e243f]">
-                            <Building2 className="h-3 w-3" />
+                {isLoading
+                  ? Array.from({ length: 6 }).map((_, idx) => (
+                      <div key={`req-skel-${idx}`} className="rounded-lg border border-[#dde2eb] bg-white p-2">
+                        <div className="h-4 w-32 rounded bg-[#e3e7ee]" />
+                        <div className="mt-3 h-3 w-40 rounded bg-[#e3e7ee]" />
+                        <div className="mt-2 h-3 w-24 rounded bg-[#eef1f6]" />
+                        <div className="mt-3 h-6 w-full rounded bg-[#e3e7ee]" />
+                      </div>
+                    ))
+                  : vendorRequests.map((request) => (
+                      <article key={request.id} className="rounded-lg border border-[#dde2eb] bg-white p-1.5">
+                        <div className="rounded-md border border-[#d7deea] bg-[#eef2ff] px-2.5 py-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className="rounded border border-[#b9c3d2] p-1 text-[#1e243f]">
+                                <Building2 className="h-3 w-3" />
+                              </div>
+                              <h3 className="text-[13px] font-semibold text-[#2d3445]">{request.name}</h3>
+                            </div>
+                            <div className="inline-flex items-center gap-1 text-[9px] text-[#8b94a3]">
+                              <CalendarClock className="h-3 w-3" />
+                              {request.requestedOn}
+                            </div>
                           </div>
-                          <h3 className="text-[13px] font-semibold text-[#2d3445]">{request.name}</h3>
+                          <div className="my-2 h-px bg-[#d5dbea]" />
+                          <div className="grid grid-cols-2 gap-y-2">
+                            <div>
+                              <div className="text-[14px] font-semibold text-[#2f3647]">{request.email}</div>
+                              <div className="text-[10px] text-[#8992a2]">Business Email</div>
+                            </div>
+                            <div>
+                              <div className="text-[14px] font-semibold text-[#2f3647]">{request.mobile}</div>
+                              <div className="text-[10px] text-[#8992a2]">Business Mobile</div>
+                            </div>
+                          </div>
+                          <div className="mt-2 text-[10px] text-[#8992a2]">Company Address</div>
+                          <div className="mt-1 text-[13px] font-semibold leading-snug text-[#2f3647]">{request.address}</div>
                         </div>
-                        <div className="inline-flex items-center gap-1 text-[9px] text-[#8b94a3]">
-                          <CalendarClock className="h-3 w-3" />
-                          {request.requestedOn}
-                        </div>
-                      </div>
-                      <div className="my-2 h-px bg-[#d5dbea]" />
-                      <div className="grid grid-cols-2 gap-y-2">
-                        <div>
-                          <div className="text-[14px] font-semibold text-[#2f3647]">{request.email}</div>
-                          <div className="text-[10px] text-[#8992a2]">Business Email</div>
-                        </div>
-                        <div>
-                          <div className="text-[14px] font-semibold text-[#2f3647]">{request.mobile}</div>
-                          <div className="text-[10px] text-[#8992a2]">Business Mobile</div>
-                        </div>
-                      </div>
-                      <div className="mt-2 text-[10px] text-[#8992a2]">Company Address</div>
-                      <div className="mt-1 text-[13px] font-semibold leading-snug text-[#2f3647]">{request.address}</div>
-                    </div>
-                    <button
-                      className="mt-1.5 h-7 w-full rounded bg-[#11163f] text-[11px] font-semibold text-white"
-                      onClick={() => setSelectedRequest(request)}
-                    >
-                      View Details
-                    </button>
-                  </article>
-                ))}
+                        <button
+                          className="mt-1.5 h-7 w-full rounded bg-[#11163f] text-[11px] font-semibold text-white"
+                          onClick={() => setSelectedRequest(request)}
+                        >
+                          View Details
+                        </button>
+                      </article>
+                    ))}
               </div>
             )}
+            <div className="mt-4 flex items-center justify-between text-[12px] text-[#4b5563]">
+              <button
+                className="inline-flex h-8 items-center rounded border border-[#d1d5db] px-3"
+                onClick={() => window.open(buildVendorExportUrl(searchTerm), "_blank", "noopener,noreferrer")}
+              >
+                Export
+              </button>
+              <div className="flex items-center gap-2">
+                <button className="inline-flex h-8 items-center rounded border border-[#d1d5db] px-3 text-[12px] text-[#4b5563]">
+                  Show {perPage} rows
+                  <ChevronDown className="ml-2 h-3.5 w-3.5" />
+                </button>
+                <button
+                  className="h-8 rounded border border-[#d1d5db] px-3"
+                  onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                >
+                  Previous
+                </button>
+                <button
+                  className="h-8 rounded border border-[#d1d5db] px-3"
+                  onClick={() => setPage((prev) => (canNextPage ? prev + 1 : prev))}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           </section>
         </main>
       </div>
@@ -379,13 +500,35 @@ export default function VendorManagementPage() {
                   Request Re - Submit
                 </button>
               </div>
+
+              <div className="border-t border-[#e2e6ed] pt-3">
+                <div className="mb-2 text-sm font-semibold text-[#1f2532]">Chat</div>
+                <textarea
+                  value={chatMessage}
+                  onChange={(event) => setChatMessage(event.target.value)}
+                  className="h-[72px] w-full rounded border border-[#d4dae4] p-2 text-[11px] outline-none"
+                  placeholder="Type message"
+                />
+                <button
+                  className="mt-2 h-8 w-full rounded bg-[#11163f] text-[10px] font-semibold text-white"
+                  onClick={handleChatSend}
+                >
+                  Send Message
+                </button>
+              </div>
             </div>
 
             <div className="mt-auto grid grid-cols-2 gap-2 px-4 pb-5 pt-3">
-              <button className="h-8 rounded border border-[#f08f8f] bg-white text-[10px] font-semibold text-[#e53935]" onClick={() => setSelectedRequest(null)}>
+              <button
+                className="h-8 rounded border border-[#f08f8f] bg-white text-[10px] font-semibold text-[#e53935]"
+                onClick={() => handleApproval(0)}
+              >
                 Reject
               </button>
-              <button className="h-8 rounded bg-[#11163f] text-[10px] font-semibold text-white" onClick={() => setSelectedRequest(null)}>
+              <button
+                className="h-8 rounded bg-[#11163f] text-[10px] font-semibold text-white"
+                onClick={() => handleApproval(1)}
+              >
                 Accept
               </button>
             </div>

@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUpDown,
   Bell,
   Building2,
   CalendarDays,
   ChevronDown,
-  ChevronRight,
   Download,
   Eye,
   FileText,
@@ -28,8 +27,12 @@ import {
 import { RootSidebar } from "@/components/RootSidebar";
 import {
   LOAN_STATUS_OPTIONS,
+  buildLoanDownloadUrl,
+  deleteLoan,
   getLoanRequests,
   getLoanStatuses,
+  updateLoanStatus,
+  uploadLoanAttachments,
   type LoanRequestRow,
   type LoanStatus,
   type LoanStatusRow,
@@ -46,25 +49,49 @@ function statusClassName(status: LoanStatus) {
   return "bg-[#d8edd9] text-[#2f7736]";
 }
 
-function PageSelect() {
+function PageSelect({
+  page,
+  totalPages,
+  onPrev,
+  onNext,
+}: {
+  page: number;
+  totalPages: number;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
   return (
     <div className="flex items-center gap-2">
-      <button className="h-8 rounded-md border border-[#d5d9e1] px-3 text-xs text-[#414a58]">Previous</button>
-      <button className="h-8 w-7 rounded-md bg-[#12153f] text-xs font-semibold text-white">1</button>
-      {["2", "4", "5", "6", "7"].map((page) => (
-        <button
-          key={page}
-          className="h-8 w-7 rounded-md border border-[#d5d9e1] text-xs text-[#606979]"
-        >
-          {page}
-        </button>
-      ))}
-      <button className="h-8 rounded-md border border-[#d5d9e1] px-3 text-xs text-[#414a58]">Next</button>
+      <button
+        className="h-8 rounded-md border border-[#d5d9e1] px-3 text-xs text-[#414a58] disabled:cursor-not-allowed disabled:text-[#9aa2b1]"
+        onClick={onPrev}
+        disabled={page <= 1}
+      >
+        Previous
+      </button>
+      <button className="h-8 min-w-[28px] rounded-md bg-[#12153f] px-2 text-xs font-semibold text-white">
+        {page}
+      </button>
+      <button
+        className="h-8 rounded-md border border-[#d5d9e1] px-3 text-xs text-[#414a58] disabled:cursor-not-allowed disabled:text-[#9aa2b1]"
+        onClick={onNext}
+        disabled={page >= totalPages}
+      >
+        Next
+      </button>
     </div>
   );
 }
 
-function AttachmentCell({ count }: { count: number }) {
+function AttachmentCell({
+  count,
+  rowId,
+  onDownload,
+}: {
+  count: number;
+  rowId: number;
+  onDownload?: (rowId: number) => void;
+}) {
   const label = count > 0 ? `${count} File${count > 1 ? "s" : ""} attached` : "No files";
   return (
     <div className="flex items-center gap-2">
@@ -72,12 +99,27 @@ function AttachmentCell({ count }: { count: number }) {
       {count > 0 ? (
         <button
           className="inline-flex h-7 w-7 items-center justify-center rounded border border-[#cfd5df] text-[#244f80]"
-          onClick={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onDownload?.(rowId);
+          }}
         >
           <Download className="h-4 w-4" />
         </button>
       ) : null}
     </div>
+  );
+}
+
+function SkeletonRow({ columns }: { columns: number }) {
+  return (
+    <tr className="h-[54px]">
+      {Array.from({ length: columns }).map((_, index) => (
+        <td key={index} className="border-b border-[#dce1e8] px-2">
+          <div className="h-3 w-full animate-pulse rounded bg-[#e6eaf2]" />
+        </td>
+      ))}
+    </tr>
   );
 }
 
@@ -91,6 +133,22 @@ export default function LoanManagementPage() {
   const [viewRow, setViewRow] = useState<LoanStatusRow | null>(null);
   const [viewMode, setViewMode] = useState<"requests" | "status" | null>(null);
   const [updateRow, setUpdateRow] = useState<LoanStatusRow | null>(null);
+  const [searchText, setSearchText] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [paymentTypeFilter, setPaymentTypeFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [requestPage, setRequestPage] = useState(1);
+  const [statusPage, setStatusPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
+  const [requestTotalPages, setRequestTotalPages] = useState(1);
+  const [statusTotalPages, setStatusTotalPages] = useState(1);
+  const [isLoadingRequests, setIsLoadingRequests] = useState(true);
+  const [isLoadingStatuses, setIsLoadingStatuses] = useState(true);
+  const [isSavingUpdate, setIsSavingUpdate] = useState(false);
+  const [updateStatusValue, setUpdateStatusValue] = useState<LoanStatus>("Documents Pending");
+  const [updateRemarks, setUpdateRemarks] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const filterRef = useRef<HTMLDivElement | null>(null);
 
@@ -114,29 +172,91 @@ export default function LoanManagementPage() {
 
   useEffect(() => {
     let isActive = true;
-
-    const loadLoanData = async () => {
-      try {
-        const [requests, statuses] = await Promise.all([
-          getLoanRequests({ loanApprove: 0, perPage: 10, page: 1 }),
-          getLoanStatuses({ loanApprove: 1, perPage: 10, page: 1 }),
-        ]);
-        if (!isActive) return;
-        setRequestRows(requests);
-        setStatusRows(statuses);
-      } catch (error) {
-        console.error("Failed to load loan data", error);
-      }
-    };
-
-    loadLoanData();
-
     return () => {
       isActive = false;
     };
   }, []);
 
-  const rows = activeTab === "requests" ? requestRows : statusRows;
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(searchText.trim());
+      setRequestPage(1);
+      setStatusPage(1);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [searchText]);
+
+  useEffect(() => {
+    let isActive = true;
+    setIsLoadingRequests(true);
+    setLoadError(null);
+    getLoanRequests({
+      loanApprove: 0,
+      perPage,
+      page: requestPage,
+      search: debouncedSearch,
+      paymentType: paymentTypeFilter,
+      status: statusFilter,
+    })
+      .then((result) => {
+        if (!isActive) return;
+        setRequestRows(result.rows);
+        setRequestTotalPages(result.pagination.totalPages);
+      })
+      .catch((error) => {
+        console.warn("Failed to load loan requests", error);
+        if (isActive) setLoadError("Unable to load loan requests right now.");
+      })
+      .finally(() => {
+        if (!isActive) return;
+        setIsLoadingRequests(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [debouncedSearch, paymentTypeFilter, statusFilter, requestPage, perPage]);
+
+  useEffect(() => {
+    let isActive = true;
+    setIsLoadingStatuses(true);
+    setLoadError(null);
+    getLoanStatuses({
+      loanApprove: 1,
+      perPage,
+      page: statusPage,
+      search: debouncedSearch,
+      paymentType: paymentTypeFilter,
+      status: statusFilter,
+    })
+      .then((result) => {
+        if (!isActive) return;
+        setStatusRows(result.rows);
+        setStatusTotalPages(result.pagination.totalPages);
+      })
+      .catch((error) => {
+        console.warn("Failed to load loan statuses", error);
+        if (isActive) setLoadError("Unable to load loan statuses right now.");
+      })
+      .finally(() => {
+        if (!isActive) return;
+        setIsLoadingStatuses(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [debouncedSearch, paymentTypeFilter, statusFilter, statusPage, perPage]);
+
+  useEffect(() => {
+    if (!updateRow) return;
+    setUpdateStatusValue(updateRow.status);
+    setUpdateRemarks(updateRow.remarks === "--" ? "" : updateRow.remarks);
+  }, [updateRow]);
+
+  const rows = useMemo(() => (activeTab === "requests" ? requestRows : statusRows), [activeTab, requestRows, statusRows]);
+  const currentPage = activeTab === "requests" ? requestPage : statusPage;
+  const currentTotalPages = activeTab === "requests" ? requestTotalPages : statusTotalPages;
 
   const getViewRow = (row: LoanRequestRow | LoanStatusRow): LoanStatusRow => {
     const existing = statusRows.find((statusRow) => statusRow.id === row.id);
@@ -153,8 +273,74 @@ export default function LoanManagementPage() {
   };
 
   const selectedStatus = updateRow
-    ? statusRows.find((item) => item.id === updateRow.id)?.status ?? "Documents Pending"
+    ? updateStatusValue
     : "Documents Pending";
+
+  const handleDownload = (rowId: number) => {
+    const url = buildLoanDownloadUrl([rowId]);
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const handleDelete = async (rowId: number, mode: "requests" | "status") => {
+    if (!window.confirm("Delete this loan request?")) return;
+    try {
+      await deleteLoan(rowId);
+      if (mode === "requests") {
+        setRequestRows((prev) => prev.filter((item) => item.id !== rowId));
+      } else {
+        setStatusRows((prev) => prev.filter((item) => item.id !== rowId));
+      }
+    } catch (error) {
+      console.warn("Failed to delete loan", error);
+    }
+  };
+
+  const handleSaveUpdate = async () => {
+    if (!updateRow || isSavingUpdate) return;
+    setIsSavingUpdate(true);
+    try {
+      await updateLoanStatus({
+        id: updateRow.id,
+        status: updateStatusValue,
+        remarks: updateRemarks,
+      });
+      setStatusRows((prev) =>
+        prev.map((row) =>
+          row.id === updateRow.id
+            ? {
+                ...row,
+                status: updateStatusValue,
+                remarks: updateRemarks || "--",
+              }
+            : row,
+        ),
+      );
+      setUpdateRow(null);
+    } catch (error) {
+      console.warn("Failed to update loan status", error);
+    } finally {
+      setIsSavingUpdate(false);
+    }
+  };
+
+  const handleUploadFiles = async (files: FileList | null) => {
+    if (!updateRow || !files || files.length === 0) return;
+    try {
+      await uploadLoanAttachments(updateRow.id, Array.from(files));
+      setUpdateRow((prev) =>
+        prev
+          ? {
+              ...prev,
+              attachments: prev.attachments,
+            }
+          : prev,
+      );
+    } catch (error) {
+      console.warn("Failed to upload loan files", error);
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#eceef2] text-[#171b24]">
@@ -182,6 +368,11 @@ export default function LoanManagementPage() {
             <h1 className="text-[32px] font-semibold leading-none text-[#1d2028]">Loan Management</h1>
 
             <section className="mt-4 rounded-md border border-[#d8dde5] bg-white p-3 shadow-[0_1px_2px_rgba(16,24,40,0.05)]">
+              {loadError ? (
+                <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                  {loadError}
+                </div>
+              ) : null}
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex h-8 w-[260px] rounded bg-[#eef1f6] p-0.5 text-sm font-semibold">
                   <button
@@ -215,9 +406,14 @@ export default function LoanManagementPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <div className="flex h-9 w-[190px] items-center gap-2 rounded border border-[#d8dde5] px-3 text-xs text-[#9aa2b1]">
+                  <div className="flex h-9 w-[220px] items-center gap-2 rounded border border-[#d8dde5] px-3 text-xs text-[#9aa2b1]">
                     <Search className="h-4 w-4" />
-                    Search
+                    <input
+                      value={searchText}
+                      onChange={(event) => setSearchText(event.target.value)}
+                      placeholder="Search"
+                      className="h-full w-full bg-transparent text-xs text-[#1f2533] outline-none placeholder:text-[#9aa2b1]"
+                    />
                   </div>
                   <button className="inline-flex h-9 items-center gap-1 rounded border border-[#d8dde5] px-3 text-xs text-[#7a8494]">
                     Customise
@@ -233,26 +429,57 @@ export default function LoanManagementPage() {
                       <ChevronDown className="h-3.5 w-3.5" />
                     </button>
                     {showFilter ? (
-                      <div className="absolute right-0 top-11 z-30 w-32 rounded-xl border border-[#d9dce2] bg-white py-1.5 text-xs shadow-[0_10px_20px_rgba(16,24,40,0.12)]">
-                        <div className="border-b border-[#ebedf2] px-3 py-2 font-medium text-[#535a68]">
+                      <div className="absolute right-0 top-11 z-30 w-56 rounded-xl border border-[#d9dce2] bg-white p-3 text-xs shadow-[0_10px_20px_rgba(16,24,40,0.12)]">
+                        <div className="mb-2 border-b border-[#ebedf2] pb-2 font-medium text-[#535a68]">
                           Filter by
                         </div>
-                        <button className="flex w-full items-center justify-between px-3 py-2 text-[#5f6675] hover:bg-[#f7f8fb]">
-                          <span>Date Range</span>
-                          <CalendarDays className="h-3.5 w-3.5" />
-                        </button>
-                        <button className="flex w-full items-center justify-between px-3 py-2 text-[#5f6675] hover:bg-[#f7f8fb]">
-                          <span>Region</span>
-                          <ChevronRight className="h-3.5 w-3.5" />
-                        </button>
-                        <button className="flex w-full items-center justify-between px-3 py-2 text-[#5f6675] hover:bg-[#f7f8fb]">
-                          <span>Status</span>
-                          <ChevronRight className="h-3.5 w-3.5" />
-                        </button>
-                        <button className="flex w-full items-center justify-between px-3 py-2 text-[#5f6675] hover:bg-[#f7f8fb]">
-                          <span>Vendor</span>
-                          <ChevronRight className="h-3.5 w-3.5" />
-                        </button>
+                        <label className="mb-1 block text-[11px] font-semibold text-[#6a7180]">Status</label>
+                        <select
+                          value={statusFilter}
+                          onChange={(event) => {
+                            setStatusFilter(event.target.value);
+                            setRequestPage(1);
+                            setStatusPage(1);
+                          }}
+                          className="h-8 w-full rounded border border-[#dfe3eb] bg-white px-2 text-[11px]"
+                        >
+                          <option value="">All</option>
+                          {statusOptions.map((statusOption) => (
+                            <option key={statusOption} value={statusOption}>
+                              {statusOption}
+                            </option>
+                          ))}
+                        </select>
+                        <label className="mt-3 mb-1 block text-[11px] font-semibold text-[#6a7180]">Payment Type</label>
+                        <input
+                          value={paymentTypeFilter}
+                          onChange={(event) => {
+                            setPaymentTypeFilter(event.target.value);
+                            setRequestPage(1);
+                            setStatusPage(1);
+                          }}
+                          placeholder="e.g. EMI"
+                          className="h-8 w-full rounded border border-[#dfe3eb] px-2 text-[11px]"
+                        />
+                        <div className="mt-3 flex items-center gap-2">
+                          <button
+                            className="flex-1 rounded border border-[#d1d7e0] px-2 py-1 text-[11px] text-[#5f6675]"
+                            onClick={() => {
+                              setStatusFilter("");
+                              setPaymentTypeFilter("");
+                              setRequestPage(1);
+                              setStatusPage(1);
+                            }}
+                          >
+                            Clear
+                          </button>
+                          <button
+                            className="flex-1 rounded bg-[#11163f] px-2 py-1 text-[11px] text-white"
+                            onClick={() => setShowFilter(false)}
+                          >
+                            Apply
+                          </button>
+                        </div>
                       </div>
                     ) : null}
                   </div>
@@ -293,76 +520,82 @@ export default function LoanManagementPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.map((row) => (
-                        <tr
-                          key={row.id}
-                          className="h-[54px] cursor-pointer odd:bg-[#f8f9fb]"
-                          onClick={() => {
-                            setOpenMenuRow(null);
-                            setOpenStatusRow(null);
-                            setViewRow(getViewRow(row));
-                            setViewMode("requests");
-                          }}
-                        >
-                          <td className="border-b border-[#dce1e8] px-2">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 rounded border-[#bac3d1]"
-                              onClick={(event) => event.stopPropagation()}
-                            />
-                          </td>
-                          <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.loanRefNo}</td>
-                          <td className="border-b border-[#dce1e8] px-2">{row?.lead?.name}</td>
-                          <td className="border-b border-[#dce1e8] px-2" />
-                          <td className="border-b border-[#dce1e8] px-2">{row.vendor}</td>
-                          <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.projectValue}</td>
-                          <td className="border-b border-[#dce1e8] px-2">{row.bank}</td>
-                          <td className="border-b border-[#dce1e8] px-2">
-                            <AttachmentCell count={row.attachments?.length ?? 0} />
-                          </td>
-                          <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.requestedOn}</td>
-                          <td className="relative border-b border-[#dce1e8] px-2">
-                            <div ref={openMenuRow === row.id ? menuRef : null} className="relative">
-                              <button
-                                className="rounded p-1 text-[#1f2430]"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setOpenMenuRow(openMenuRow === row.id ? null : row.id);
-                                }}
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </button>
-                              {openMenuRow === row.id ? (
-                                <div className="absolute right-0 top-7 z-20 w-28 rounded-lg border border-[#d9dce1] bg-white py-1 shadow-[0_8px_18px_rgba(16,24,40,0.12)]">
+                      {isLoadingRequests
+                        ? Array.from({ length: 6 }).map((_, index) => <SkeletonRow key={`req-${index}`} columns={10} />)
+                        : rows.map((row) => (
+                            <tr
+                              key={row.id}
+                              className="h-[54px] cursor-pointer odd:bg-[#f8f9fb]"
+                              onClick={() => {
+                                setOpenMenuRow(null);
+                                setOpenStatusRow(null);
+                                setViewRow(getViewRow(row));
+                                setViewMode("requests");
+                              }}
+                            >
+                              <td className="border-b border-[#dce1e8] px-2">
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 rounded border-[#bac3d1]"
+                                  onClick={(event) => event.stopPropagation()}
+                                />
+                              </td>
+                              <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.loanRefNo}</td>
+                              <td className="border-b border-[#dce1e8] px-2">{row?.lead?.name}</td>
+                              <td className="border-b border-[#dce1e8] px-2" />
+                              <td className="border-b border-[#dce1e8] px-2">{row.vendor}</td>
+                              <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.projectValue}</td>
+                              <td className="border-b border-[#dce1e8] px-2">{row.bank}</td>
+                              <td className="border-b border-[#dce1e8] px-2">
+                                <AttachmentCell
+                                  count={row.attachments?.length ?? 0}
+                                  rowId={row.id}
+                                  onDownload={handleDownload}
+                                />
+                              </td>
+                              <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.requestedOn}</td>
+                              <td className="relative border-b border-[#dce1e8] px-2">
+                                <div ref={openMenuRow === row.id ? menuRef : null} className="relative">
                                   <button
-                                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[#4b5563] hover:bg-[#f5f7fb]"
+                                    className="rounded p-1 text-[#1f2430]"
                                     onClick={(event) => {
                                       event.stopPropagation();
-                                      setViewRow(getViewRow(row));
-                                      setViewMode("requests");
-                                      setOpenMenuRow(null);
+                                      setOpenMenuRow(openMenuRow === row.id ? null : row.id);
                                     }}
                                   >
-                                    <Eye className="h-3.5 w-3.5" />
-                                    View
+                                    <MoreVertical className="h-4 w-4" />
                                   </button>
-                                  <button
-                                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[#e02424] hover:bg-[#fff5f5]"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      setRequestRows((prev) => prev.filter((item) => item.id !== row.id));
-                                      setOpenMenuRow(null);
-                                    }}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                    Delete
-                                  </button>
+                                  {openMenuRow === row.id ? (
+                                    <div className="absolute right-0 top-7 z-20 w-28 rounded-lg border border-[#d9dce1] bg-white py-1 shadow-[0_8px_18px_rgba(16,24,40,0.12)]">
+                                      <button
+                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[#4b5563] hover:bg-[#f5f7fb]"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          setViewRow(getViewRow(row));
+                                          setViewMode("requests");
+                                          setOpenMenuRow(null);
+                                        }}
+                                      >
+                                        <Eye className="h-3.5 w-3.5" />
+                                        View
+                                      </button>
+                                      <button
+                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[#e02424] hover:bg-[#fff5f5]"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          handleDelete(row.id, "requests");
+                                          setOpenMenuRow(null);
+                                        }}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                        Delete
+                                      </button>
+                                    </div>
+                                  ) : null}
                                 </div>
-                              ) : null}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                              </td>
+                            </tr>
+                          ))}
                     </tbody>
                   </table>
                 ) : (
@@ -407,133 +640,139 @@ export default function LoanManagementPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {statusRows.map((row) => (
-                        <tr
-                          key={row.id}
-                          className="h-[54px] cursor-pointer odd:bg-[#f8f9fb]"
-                          onClick={() => {
-                            setOpenMenuRow(null);
-                            setOpenStatusRow(null);
-                            setViewRow(row);
-                            setViewMode("status");
-                          }}
-                        >
-                          <td className="border-b border-[#dce1e8] px-2">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 rounded border-[#bac3d1]"
-                              onClick={(event) => event.stopPropagation()}
-                            />
-                          </td>
-                          <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.loanRefNo}</td>
-                          <td className="border-b border-[#dce1e8] px-2">{row.lead?.name ?? row.customer}</td>
-                          <td className="border-b border-[#dce1e8] px-2" />
-                          <td className="border-b border-[#dce1e8] px-2">{row.vendor}</td>
-                          <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.projectValue}</td>
-                          <td className="border-b border-[#dce1e8] px-2">{row.bank}</td>
-                          <td className="border-b border-[#dce1e8] px-2">
-                            <AttachmentCell count={row.attachments?.length ?? 0} />
-                          </td>
-                          <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.updatedOn}</td>
-                          <td className="border-b border-[#dce1e8] px-2">
-                            <div className="relative inline-block" data-status-menu>
-                              <button
-                                className={`inline-flex min-w-[88px] items-center justify-between rounded px-2.5 py-1 text-[10px] ${statusClassName(row.status)}`}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setOpenStatusRow(openStatusRow === row.id ? null : row.id);
-                                }}
-                              >
-                                {row.status}
-                                <ChevronDown className="ml-1 h-3.5 w-3.5" />
-                              </button>
-                              {openStatusRow === row.id ? (
-                                <div className="absolute left-0 top-8 z-30 w-[108px] rounded border border-[#d1d5de] bg-white py-1 shadow-[0_10px_18px_rgba(15,23,42,0.16)]">
-                                  {statusOptions.map((statusOption, index) => (
-                                    <button
-                                      key={statusOption}
-                                      className="flex w-full items-center justify-between px-2 py-1.5 text-left text-[10px] text-[#111827] hover:bg-[#f3f5f8]"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        setStatusRows((prev) =>
-                                          prev.map((currentRow) =>
-                                            currentRow.id === row.id
-                                              ? { ...currentRow, status: statusOption }
-                                              : currentRow,
-                                          ),
-                                        );
-                                        setOpenStatusRow(null);
-                                      }}
-                                    >
-                                      <span>{statusOption}</span>
-                                      {index === 0 ? (
-                                        <ChevronDown className="h-3 w-3 rotate-180 text-[#414b5a]" />
-                                      ) : null}
-                                    </button>
-                                  ))}
+                      {isLoadingStatuses
+                        ? Array.from({ length: 6 }).map((_, index) => <SkeletonRow key={`status-${index}`} columns={14} />)
+                        : statusRows.map((row) => (
+                            <tr
+                              key={row.id}
+                              className="h-[54px] cursor-pointer odd:bg-[#f8f9fb]"
+                              onClick={() => {
+                                setOpenMenuRow(null);
+                                setOpenStatusRow(null);
+                                setViewRow(row);
+                                setViewMode("status");
+                              }}
+                            >
+                              <td className="border-b border-[#dce1e8] px-2">
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 rounded border-[#bac3d1]"
+                                  onClick={(event) => event.stopPropagation()}
+                                />
+                              </td>
+                              <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.loanRefNo}</td>
+                              <td className="border-b border-[#dce1e8] px-2">{row.lead?.name ?? row.customer}</td>
+                              <td className="border-b border-[#dce1e8] px-2" />
+                              <td className="border-b border-[#dce1e8] px-2">{row.vendor}</td>
+                              <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.projectValue}</td>
+                              <td className="border-b border-[#dce1e8] px-2">{row.bank}</td>
+                              <td className="border-b border-[#dce1e8] px-2">
+                                <AttachmentCell
+                                  count={row.attachments?.length ?? 0}
+                                  rowId={row.id}
+                                  onDownload={handleDownload}
+                                />
+                              </td>
+                              <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.updatedOn}</td>
+                              <td className="border-b border-[#dce1e8] px-2">
+                                <div className="relative inline-block" data-status-menu>
+                                  <button
+                                    className={`inline-flex min-w-[88px] items-center justify-between rounded px-2.5 py-1 text-[10px] ${statusClassName(row.status)}`}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setOpenStatusRow(openStatusRow === row.id ? null : row.id);
+                                    }}
+                                  >
+                                    {row.status}
+                                    <ChevronDown className="ml-1 h-3.5 w-3.5" />
+                                  </button>
+                                  {openStatusRow === row.id ? (
+                                    <div className="absolute left-0 top-8 z-30 w-[108px] rounded border border-[#d1d5de] bg-white py-1 shadow-[0_10px_18px_rgba(15,23,42,0.16)]">
+                                      {statusOptions.map((statusOption, index) => (
+                                        <button
+                                          key={statusOption}
+                                          className="flex w-full items-center justify-between px-2 py-1.5 text-left text-[10px] text-[#111827] hover:bg-[#f3f5f8]"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            setStatusRows((prev) =>
+                                              prev.map((currentRow) =>
+                                                currentRow.id === row.id
+                                                  ? { ...currentRow, status: statusOption }
+                                                  : currentRow,
+                                              ),
+                                            );
+                                            setOpenStatusRow(null);
+                                          }}
+                                        >
+                                          <span>{statusOption}</span>
+                                          {index === 0 ? (
+                                            <ChevronDown className="h-3 w-3 rotate-180 text-[#414b5a]" />
+                                          ) : null}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  ) : null}
                                 </div>
-                              ) : null}
-                            </div>
-                          </td>
-                          <td className="border-b border-[#dce1e8] px-2">{row.remarks}</td>
-                          <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.disbursedAmount}</td>
-                          <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.pendingAmount}</td>
-                          <td className="border-b border-[#dce1e8] px-2">{row.region}</td>
-                          <td className="relative border-b border-[#dce1e8] px-2">
-                            <div ref={openMenuRow === row.id ? menuRef : null} className="relative">
-                              <button
-                                className="rounded p-1 text-[#1f2430]"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setOpenMenuRow(openMenuRow === row.id ? null : row.id);
-                                }}
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </button>
-                              {openMenuRow === row.id ? (
-                                <div className="absolute right-0 top-7 z-20 w-28 rounded-lg border border-[#d9dce1] bg-white py-1 shadow-[0_8px_18px_rgba(16,24,40,0.12)]">
+                              </td>
+                              <td className="border-b border-[#dce1e8] px-2">{row.remarks}</td>
+                              <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.disbursedAmount}</td>
+                              <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.pendingAmount}</td>
+                              <td className="border-b border-[#dce1e8] px-2">{row.region}</td>
+                              <td className="relative border-b border-[#dce1e8] px-2">
+                                <div ref={openMenuRow === row.id ? menuRef : null} className="relative">
                                   <button
-                                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[#4b5563] hover:bg-[#f5f7fb]"
+                                    className="rounded p-1 text-[#1f2430]"
                                     onClick={(event) => {
                                       event.stopPropagation();
-                                      setViewRow(row);
-                                      setViewMode("status");
-                                      setOpenMenuRow(null);
+                                      setOpenMenuRow(openMenuRow === row.id ? null : row.id);
                                     }}
                                   >
-                                    <Eye className="h-3.5 w-3.5" />
-                                    View
+                                    <MoreVertical className="h-4 w-4" />
                                   </button>
-                                  <button
-                                    className="mx-1 flex w-[calc(100%-8px)] items-center gap-2 rounded-sm border border-[#2f7df6] px-2 py-2 text-left text-xs text-[#2f7df6]"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      setUpdateRow(row);
-                                      setViewRow(null);
-                                      setViewMode(null);
-                                      setOpenMenuRow(null);
-                                    }}
-                                  >
-                                    <PencilLine className="h-3.5 w-3.5" />
-                                    Update
-                                  </button>
-                                  <button
-                                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[#e02424] hover:bg-[#fff5f5]"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      setStatusRows((prev) => prev.filter((item) => item.id !== row.id));
-                                      setOpenMenuRow(null);
-                                    }}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                    Delete
-                                  </button>
+                                  {openMenuRow === row.id ? (
+                                    <div className="absolute right-0 top-7 z-20 w-28 rounded-lg border border-[#d9dce1] bg-white py-1 shadow-[0_8px_18px_rgba(16,24,40,0.12)]">
+                                      <button
+                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[#4b5563] hover:bg-[#f5f7fb]"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          setViewRow(row);
+                                          setViewMode("status");
+                                          setOpenMenuRow(null);
+                                        }}
+                                      >
+                                        <Eye className="h-3.5 w-3.5" />
+                                        View
+                                      </button>
+                                      <button
+                                        className="mx-1 flex w-[calc(100%-8px)] items-center gap-2 rounded-sm border border-[#2f7df6] px-2 py-2 text-left text-xs text-[#2f7df6]"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          setUpdateRow(row);
+                                          setViewRow(null);
+                                          setViewMode(null);
+                                          setOpenMenuRow(null);
+                                        }}
+                                      >
+                                        <PencilLine className="h-3.5 w-3.5" />
+                                        Update
+                                      </button>
+                                      <button
+                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[#e02424] hover:bg-[#fff5f5]"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          handleDelete(row.id, "status");
+                                          setOpenMenuRow(null);
+                                        }}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                        Delete
+                                      </button>
+                                    </div>
+                                  ) : null}
                                 </div>
-                              ) : null}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                              </td>
+                            </tr>
+                          ))}
                     </tbody>
                   </table>
                 )}
@@ -541,13 +780,46 @@ export default function LoanManagementPage() {
 
               <div className="mt-3 flex flex-wrap items-center justify-between gap-3 px-1 text-xs text-[#111827]">
                 <div className="flex items-center gap-3">
-                  <span>Page 1 of 10</span>
-                  <button className="inline-flex h-8 items-center rounded-md border border-[#d1d5db] px-3 text-xs text-[#6b7280]">
-                    Show 20 rows
-                    <ChevronDown className="ml-2 h-3.5 w-3.5" />
-                  </button>
+                  <span>
+                    Page {currentPage} of {currentTotalPages}
+                  </span>
+                  <div className="relative">
+                    <select
+                      value={perPage}
+                      onChange={(event) => {
+                        setPerPage(Number(event.target.value));
+                        setRequestPage(1);
+                        setStatusPage(1);
+                      }}
+                      className="h-8 rounded-md border border-[#d1d5db] bg-white px-3 text-xs text-[#6b7280]"
+                    >
+                      {[10, 20, 50].map((size) => (
+                        <option key={size} value={size}>
+                          Show {size} rows
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2 top-2 h-3.5 w-3.5 text-[#6b7280]" />
+                  </div>
                 </div>
-                <PageSelect />
+                <PageSelect
+                  page={currentPage}
+                  totalPages={currentTotalPages}
+                  onPrev={() => {
+                    if (activeTab === "requests") {
+                      setRequestPage((prev) => Math.max(1, prev - 1));
+                    } else {
+                      setStatusPage((prev) => Math.max(1, prev - 1));
+                    }
+                  }}
+                  onNext={() => {
+                    if (activeTab === "requests") {
+                      setRequestPage((prev) => Math.min(requestTotalPages, prev + 1));
+                    } else {
+                      setStatusPage((prev) => Math.min(statusTotalPages, prev + 1));
+                    }
+                  }}
+                />
               </div>
             </section>
           </div>
@@ -877,13 +1149,27 @@ export default function LoanManagementPage() {
                         <div className="flex items-center gap-1">
                           <button
                             className="rounded border border-[#b7c2d8] bg-white p-1 text-[#204b7a]"
-                            onClick={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (file.url) {
+                                window.open(file.url, "_blank", "noopener,noreferrer");
+                              } else {
+                                handleDownload(viewRow.id);
+                              }
+                            }}
                           >
                             <Download className="h-3.5 w-3.5" />
                           </button>
                           <button
                             className="rounded bg-[#10153d] p-1 text-white"
-                            onClick={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (file.url) {
+                                window.open(file.url, "_blank", "noopener,noreferrer");
+                              } else {
+                                handleDownload(updateRow.id);
+                              }
+                            }}
                           >
                             <Eye className="h-3.5 w-3.5" />
                           </button>
@@ -972,11 +1258,7 @@ export default function LoanManagementPage() {
                       value={selectedStatus}
                       onChange={(event) => {
                         const newStatus = event.target.value as LoanStatus;
-                        setStatusRows((prev) =>
-                          prev.map((currentRow) =>
-                            currentRow.id === updateRow.id ? { ...currentRow, status: newStatus } : currentRow,
-                          ),
-                        );
+                        setUpdateStatusValue(newStatus);
                       }}
                     >
                       {statusOptions.map((statusOption) => (
@@ -1045,10 +1327,20 @@ export default function LoanManagementPage() {
                       No files uploaded.
                     </div>
                   )}
-                  <button className="flex h-8 w-full items-center justify-center gap-1 rounded border border-[#3f4a67] bg-white text-[10px] font-semibold text-[#303954]">
+                  <button
+                    className="flex h-8 w-full items-center justify-center gap-1 rounded border border-[#3f4a67] bg-white text-[10px] font-semibold text-[#303954]"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
                     <Upload className="h-3.5 w-3.5" />
                     Upload Files
                   </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={(event) => handleUploadFiles(event.target.files)}
+                  />
                 </div>
               </div>
 
@@ -1056,7 +1348,8 @@ export default function LoanManagementPage() {
                 <label className="mb-1 block font-semibold text-[#1f2532]">Remarks</label>
                 <textarea
                   rows={4}
-                  defaultValue={updateRow.remarks === "--" ? "" : updateRow.remarks}
+                  value={updateRemarks}
+                  onChange={(event) => setUpdateRemarks(event.target.value)}
                   className="w-full rounded border border-[#d5dbe6] p-2 text-[10px] outline-none focus:border-[#2f7df6]"
                   placeholder="Type Remarks"
                 />
@@ -1071,9 +1364,10 @@ export default function LoanManagementPage() {
                 </button>
                 <button
                   className="h-8 rounded bg-[#11163f] text-[10px] font-semibold text-white"
-                  onClick={() => setUpdateRow(null)}
+                  onClick={handleSaveUpdate}
+                  disabled={isSavingUpdate}
                 >
-                  Save
+                  {isSavingUpdate ? "Saving..." : "Save"}
                 </button>
               </div>
             </div>

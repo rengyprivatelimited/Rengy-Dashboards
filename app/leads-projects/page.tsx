@@ -21,13 +21,22 @@ import {
   WalletCards,
   X,
   ArrowUpDown,
+  Download,
+  Star,
 } from "lucide-react";
 import { RootSidebar } from "@/components/RootSidebar";
-import { mockData } from "@/lib/mock-data";
-import { getLeadsProjectsData } from "@/features/admin/api/leads-projects";
+import {
+  assignVendor,
+  buildDprDownloadUrl,
+  createLead,
+  getLeadsProjectsData,
+  toggleFavorite,
+  updateLead,
+} from "@/features/admin/api/leads-projects";
 
 type ProjectRow = {
   id: string;
+  rawId?: string | number | null;
   customer: string;
   vendor: string;
   stage: string;
@@ -42,6 +51,7 @@ type ProjectRow = {
 
 type LeadRow = {
   id: string;
+  rawId?: string | number | null;
   customer: string;
   vendor: string;
   source: string;
@@ -123,8 +133,6 @@ type PaymentFilterParent = "Vendor" | "Payment Type" | "Milestone" | "Customer" 
 type RemarksSortParent = "Team" | "Date Range";
 type FloatingPosition = { top: number; left: number };
 
-const fallbackProjects: ProjectRow[] = mockData.leadsProjects.projects as ProjectRow[];
-const fallbackLeads: LeadRow[] = mockData.leadsProjects.leads as LeadRow[];
 
 const milestoneTabs = [
   "Lead Added",
@@ -544,6 +552,13 @@ function hasAny(status: string | undefined, keywords: string[]): boolean {
   return keywords.some((keyword) => text.includes(keyword));
 }
 
+function extractNumericId(value: string | number | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number") return String(value);
+  const digits = String(value).replace(/[^\d]/g, "");
+  return digits || null;
+}
+
 function defaultForm(leadId: string): LeadFormData {
   return { leadId, leadSource: "Google Ads", type: "Residency", expectedInstallationDate: "", name: "", address: "", vendor: "Rohith", assignedTo: "Rohith", phone: "", email: "sample@gmail.com", state: "Kerala", district: "Thrissur" };
 }
@@ -566,10 +581,20 @@ function defaultProjectDetailEditForm(customerName: string): ProjectDetailEditFo
 
 export default function LeadsProjectsPage() {
   const [activeTopTab, setActiveTopTab] = useState<"Projects" | "Leads">("Projects");
-  const [projects, setProjects] = useState<ProjectRow[]>(fallbackProjects);
-  const [leads, setLeads] = useState<LeadRow[]>(fallbackLeads);
+  const [projects, setProjects] = useState<ProjectRow[]>([]);
+  const [leads, setLeads] = useState<LeadRow[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
+  const [vendorIdFilterProjects, setVendorIdFilterProjects] = useState("");
+  const [vendorIdFilterLeads, setVendorIdFilterLeads] = useState("");
+  const [isArchivedFilter, setIsArchivedFilter] = useState("");
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [draftFilters, setDraftFilters] = useState({ vendorId: "", isArchived: "" });
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [drawerMode, setDrawerMode] = useState<DrawerMode>("view");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
@@ -579,11 +604,13 @@ export default function LeadsProjectsPage() {
   const [activeMilestoneTab, setActiveMilestoneTab] = useState<MilestoneTab>("Lead Added");
   const [activeLeadMilestoneTab, setActiveLeadMilestoneTab] = useState<LeadMilestoneTab>("Lead Added");
   const [activeDetailTab, setActiveDetailTab] = useState<ProjectDetailTab>("Milestone");
+  const [remarksNote, setRemarksNote] = useState("");
   const [isPaymentFilterOpen, setIsPaymentFilterOpen] = useState(false);
   const [activePaymentFilterPanel, setActivePaymentFilterPanel] = useState<PaymentFilterParent | null>(null);
   const [vendorSearch, setVendorSearch] = useState("");
   const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
   const paymentFilterRef = useRef<HTMLDivElement | null>(null);
+  const filterRef = useRef<HTMLDivElement | null>(null);
   const paymentFilterButtonRef = useRef<HTMLButtonElement | null>(null);
   const paymentFilterPanelRef = useRef<HTMLDivElement | null>(null);
   const paymentVendorButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -654,24 +681,47 @@ export default function LeadsProjectsPage() {
   useEffect(() => {
     let isMounted = true;
 
-    getLeadsProjectsData({ search: searchTerm })
+    setIsLoading(true);
+    setLoadError(null);
+    const vendorId =
+      activeTopTab === "Projects"
+        ? vendorIdFilterProjects || undefined
+        : vendorIdFilterLeads || undefined;
+    getLeadsProjectsData({
+      search: searchTerm,
+      page,
+      perPage,
+      vendorId,
+      isArchived: activeTopTab === "Leads" && isArchivedFilter !== "" ? Number(isArchivedFilter) : undefined,
+      includeProjects: activeTopTab === "Projects",
+      includeLeads: activeTopTab === "Leads",
+    })
       .then((result) => {
         if (!isMounted) return;
         setProjects(result.projects);
         setLeads(result.leads);
       })
       .catch((error) => {
-        console.error("Leads & projects API failed. Using fallback data.", error);
+        console.error("Leads & projects API failed.", error);
+        if (!isMounted) return;
+        setLoadError("Failed to load leads/projects. Please try again.");
+        setProjects([]);
+        setLeads([]);
+      })
+      .finally(() => {
+        if (!isMounted) return;
+        setIsLoading(false);
       });
 
     return () => {
       isMounted = false;
     };
-  }, [searchTerm]);
+  }, [searchTerm, page, perPage, vendorIdFilterProjects, vendorIdFilterLeads, isArchivedFilter, activeTopTab]);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
       setSearchTerm(searchInput.trim());
+      setPage(1);
     }, 350);
 
     return () => clearTimeout(timeout);
@@ -687,6 +737,9 @@ export default function LeadsProjectsPage() {
       if (remarksSortRef.current && !remarksSortRef.current.contains(target)) {
         setIsRemarksSortOpen(false);
         setActiveRemarksSortPanel(null);
+      }
+      if (filterRef.current && !filterRef.current.contains(target)) {
+        setIsFilterOpen(false);
       }
       if (userMenuRef.current && !userMenuRef.current.contains(target)) {
         setIsUserMenuOpen(false);
@@ -744,6 +797,7 @@ export default function LeadsProjectsPage() {
     setDetailContext({ type: "project", row, index });
     setActiveMilestoneTab("Lead Added");
     setActiveDetailTab("Milestone");
+    setRemarksNote("");
     setIsPaymentFilterOpen(false);
     setActivePaymentFilterPanel(null);
     setIsRemarksSortOpen(false);
@@ -755,6 +809,7 @@ export default function LeadsProjectsPage() {
     setDetailContext({ type: "lead", row, index });
     setActiveLeadMilestoneTab(row.milestone === "Site Survey" ? "Site Survey Completed" : "Lead Added");
     setActiveDetailTab("Milestone");
+    setRemarksNote("");
     setIsPaymentFilterOpen(false);
     setActivePaymentFilterPanel(null);
     setIsRemarksSortOpen(false);
@@ -788,7 +843,7 @@ export default function LeadsProjectsPage() {
   const openEditDrawer = (row: ProjectRow, index: number) => {
     setDrawerMode("edit");
     setSelectedRowIndex(index);
-    setForm({ leadId: "#121212", leadSource: "Google Ads", type: "Residency", expectedInstallationDate: "", name: row.customer, address: "1st cross, HSR Layout, Bangalore - 560098", vendor: row.vendor, assignedTo: row.assignedTo, phone: "+91 9988776655", email: "sample@gmail.com", state: "Kerala", district: "Thrissur" });
+    setForm({ leadId: row.id, leadSource: "Google Ads", type: "Residency", expectedInstallationDate: "", name: row.customer, address: "1st cross, HSR Layout, Bangalore - 560098", vendor: row.vendor, assignedTo: row.assignedTo, phone: "+91 9988776655", email: "sample@gmail.com", state: "Kerala", district: "Thrissur" });
     setIsDrawerOpen(true);
   };
 
@@ -799,36 +854,91 @@ export default function LeadsProjectsPage() {
     setIsDrawerOpen(true);
   };
 
-  const onSaveDrawer = () => {
+  const onSaveDrawer = async () => {
+    setActionError(null);
+    const contextId =
+      (detailContext?.row as ProjectRow | LeadRow | null)?.rawId ??
+      extractNumericId((detailContext?.row as ProjectRow | LeadRow | null)?.id) ??
+      extractNumericId(form.leadId);
+
     if (drawerMode === "create") {
-      const newLead: LeadRow = {
-        id: "#1023",
-        customer: form.name || "New Customer",
-        vendor: form.vendor,
-        source: form.leadSource || "Vendor App",
-        address: form.address || "1st cross, HSR Layout, Bangalore - 560098",
-        milestone: "New Lead",
-        amountPaid: "-",
-        dueAmount: "-",
-        assignedTo: form.assignedTo,
-      };
-      setLeads((prev) => {
-        const updated = [...prev, newLead];
-        setDetailContext({ type: "lead", row: updated[updated.length - 1], index: updated.length - 1 });
-        setActiveTopTab("Leads");
-        return updated;
-      });
-      setActiveLeadMilestoneTab("Lead Added");
-      setActiveDetailTab("Milestone");
+      try {
+        await createLead({
+          leadId: form.leadId,
+          leadSource: form.leadSource,
+          type: form.type,
+          expectedInstallationDate: form.expectedInstallationDate,
+          name: form.name,
+          address: form.address,
+          vendor: form.vendor,
+          assignedTo: form.assignedTo,
+          phone: form.phone,
+          email: form.email,
+          state: form.state,
+          district: form.district,
+        });
+        setPage(1);
+      } catch (error) {
+        console.error("Create lead failed", error);
+        setActionError("Create lead failed. Please try again.");
+      }
       setIsDrawerOpen(false);
       return;
     }
 
-    if (drawerMode === "edit" && selectedRowIndex !== null) {
-      setProjects((prev) => prev.map((item, idx) => idx === selectedRowIndex ? { ...item, customer: form.name, vendor: form.vendor, assignedTo: form.assignedTo } : item));
+    if ((drawerMode === "edit" || drawerMode === "detail-edit") && contextId) {
+      try {
+        const payload =
+          drawerMode === "detail-edit"
+            ? { ...projectDetailEditForm, remarks: remarksNote }
+            : {
+                leadId: form.leadId,
+                leadSource: form.leadSource,
+                type: form.type,
+                expectedInstallationDate: form.expectedInstallationDate,
+                name: form.name,
+                address: form.address,
+                vendor: form.vendor,
+                assignedTo: form.assignedTo,
+                phone: form.phone,
+                email: form.email,
+                state: form.state,
+                district: form.district,
+              };
+        await updateLead(contextId, payload);
+
+        const vendorId = extractNumericId(
+          drawerMode === "detail-edit" ? projectDetailEditForm.vendorAssigned : form.vendor,
+        );
+        if (vendorId) {
+          await assignVendor({ leadId: contextId, vendorId });
+        }
+        setPage((prev) => prev);
+      } catch (error) {
+        console.error("Update lead failed", error);
+        setActionError("Update failed. API endpoint may be unavailable.");
+      }
     }
 
     setIsDrawerOpen(false);
+  };
+
+  const handleDprDownload = (row: ProjectRow) => {
+    const id = row.rawId ?? extractNumericId(row.id);
+    if (!id) return;
+    const url = buildDprDownloadUrl(id);
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const handleToggleFavorite = async (row: ProjectRow | LeadRow) => {
+    const id = row.rawId ?? extractNumericId(row.id);
+    if (!id) return;
+    try {
+      await toggleFavorite({ leadId: id });
+    } catch (error) {
+      console.error("Toggle favorite failed", error);
+      setActionError("Favorite action failed. Please try again.");
+    }
   };
 
   const pageTitle = useMemo(() => {
@@ -840,6 +950,8 @@ export default function LeadsProjectsPage() {
   const isLeadDetail = detailContext?.type === "lead";
   const detailRow = detailContext?.row ?? null;
   const leadDetailRow = detailContext?.type === "lead" ? detailContext.row : null;
+  const activeRows = activeTopTab === "Projects" ? projects : leads;
+  const canNextPage = activeRows.length >= perPage;
 
   return (
     <div className="min-h-screen bg-[#eceef2] text-[#171b24]">
@@ -1333,6 +1445,8 @@ export default function LeadsProjectsPage() {
                         <div className="text-[20px] font-semibold text-[#1f2937]">Add your Remarks here</div>
                         <textarea
                           placeholder="Add your Remarks"
+                          value={remarksNote}
+                          onChange={(event) => setRemarksNote(event.target.value)}
                           className="mt-2 h-[84px] w-full resize-none rounded border border-[#d8dde5] bg-[#f3f5fc] p-2.5 text-[11px] text-[#111827] outline-none placeholder:text-[#9aa2b1]"
                         />
                       </div>
@@ -1366,6 +1480,16 @@ export default function LeadsProjectsPage() {
                   </div>
                   <button type="button" onClick={openCreateDrawer} className="rounded bg-[#131740] px-4 py-2 text-sm font-semibold text-white">Create New Lead</button>
                 </div>
+                {loadError ? (
+                  <div className="mt-3 rounded border border-[#f1c1c1] bg-[#fff5f5] px-3 py-2 text-[13px] text-[#b91c1c]">
+                    {loadError}
+                  </div>
+                ) : null}
+                {actionError ? (
+                  <div className="mt-2 rounded border border-[#f1c1c1] bg-[#fff5f5] px-3 py-2 text-[13px] text-[#b91c1c]">
+                    {actionError}
+                  </div>
+                ) : null}
                 <div className="mt-4 flex h-9 w-[320px] rounded bg-[#eaedf5] p-1 text-sm font-semibold">
                   {(["Projects", "Leads"] as const).map((tab) => (
                     <button key={tab} type="button" onClick={() => setActiveTopTab(tab)} className={`flex-1 rounded ${activeTopTab === tab ? "bg-[#131740] text-white" : "text-[#3c4655]"}`}>{tab}</button>
@@ -1400,7 +1524,86 @@ export default function LeadsProjectsPage() {
                     />
                   </div>
                     <div className="flex items-center gap-2">
-                      <button className="inline-flex h-9 items-center gap-1 rounded border border-[#d8dde5] px-3 text-sm text-[#6b7280]"><Filter className="h-4 w-4" />Filter</button>
+                      <div className="relative" ref={filterRef}>
+                        <button
+                          type="button"
+                          className="inline-flex h-9 items-center gap-1 rounded border border-[#d8dde5] px-3 text-sm text-[#6b7280]"
+                          onClick={() => {
+                            setDraftFilters({
+                              vendorId: activeTopTab === "Projects" ? vendorIdFilterProjects : vendorIdFilterLeads,
+                              isArchived: isArchivedFilter,
+                            });
+                            setIsFilterOpen((prev) => !prev);
+                          }}
+                        >
+                          <Filter className="h-4 w-4" />
+                          Filter
+                        </button>
+                        {isFilterOpen ? (
+                          <div className="absolute right-0 top-11 z-20 w-[240px] rounded-xl border border-[#d8dde5] bg-white p-3 shadow-lg">
+                            <div className="text-sm font-semibold text-[#111827]">Filter by</div>
+                            <div className="mt-2 space-y-2 text-xs text-[#4b5563]">
+                              <div>
+                                <div className="mb-1 text-[11px] font-semibold">Vendor ID</div>
+                                <input
+                                  value={draftFilters.vendorId}
+                                  onChange={(event) =>
+                                    setDraftFilters((prev) => ({ ...prev, vendorId: event.target.value }))
+                                  }
+                                  placeholder="e.g. 20"
+                                  className="h-8 w-full rounded border border-[#d8dde5] px-2"
+                                />
+                              </div>
+                              <div>
+                                <div className="mb-1 text-[11px] font-semibold">Archived (Leads only)</div>
+                                <select
+                                  value={draftFilters.isArchived}
+                                  onChange={(event) =>
+                                    setDraftFilters((prev) => ({ ...prev, isArchived: event.target.value }))
+                                  }
+                                  className="h-8 w-full rounded border border-[#d8dde5] px-2"
+                                >
+                                  <option value="">All</option>
+                                  <option value="0">Active</option>
+                                  <option value="1">Archived</option>
+                                </select>
+                              </div>
+                            </div>
+                            <div className="mt-3 grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                className="h-8 rounded border border-[#d8dde5] text-xs text-[#4b5563]"
+                                onClick={() => {
+                                  setDraftFilters({ vendorId: "", isArchived: "" });
+                                  setVendorIdFilterProjects("");
+                                  setVendorIdFilterLeads("");
+                                  setIsArchivedFilter("");
+                                  setPage(1);
+                                  setIsFilterOpen(false);
+                                }}
+                              >
+                                Clear
+                              </button>
+                              <button
+                                type="button"
+                                className="h-8 rounded bg-[#11163f] text-xs font-semibold text-white"
+                                onClick={() => {
+                                  if (activeTopTab === "Projects") {
+                                    setVendorIdFilterProjects(draftFilters.vendorId.trim());
+                                  } else {
+                                    setVendorIdFilterLeads(draftFilters.vendorId.trim());
+                                    setIsArchivedFilter(draftFilters.isArchived);
+                                  }
+                                  setPage(1);
+                                  setIsFilterOpen(false);
+                                }}
+                              >
+                                Apply
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
                       <button className="inline-flex h-9 items-center gap-1 rounded border border-[#d8dde5] px-3 text-sm text-[#9ca3af]">Milestone<ChevronDown className="h-3.5 w-3.5" /></button>
                       <button className="inline-flex h-9 items-center gap-1 rounded border border-[#d8dde5] px-3 text-sm text-[#9ca3af]">Customise<ChevronDown className="h-3.5 w-3.5" /></button>
                     </div>
@@ -1411,17 +1614,37 @@ export default function LeadsProjectsPage() {
                         <table className="w-[1600px] table-fixed border-separate border-spacing-0 text-left">
                           <colgroup><col className="w-[42px]" /><col className="w-[90px]" /><col className="w-[90px]" /><col className="w-[90px]" /><col className="w-[120px]" /><col className="w-[110px]" /><col className="w-[100px]" /><col className="w-[100px]" /><col className="w-[110px]" /><col className="w-[130px]" /><col className="w-[120px]" /><col className="w-[100px]" /></colgroup>
                           <thead><tr className="sticky top-0 z-10 h-[46px] bg-[#d8e2df] text-[12px] font-semibold text-[#1f2937]"><th className="rounded-l-md border border-[#e4e7ec] border-r-0 px-2"><input type="checkbox" className="h-4 w-4 rounded border-[#c5ccd8]" /></th><th className="border border-[#e4e7ec] border-r-0 px-2"><div className="flex items-center gap-1">Project ID <ArrowUpDown className="h-3 w-3 text-[#8b96a7]" /></div></th><th className="border border-[#e4e7ec] border-r-0 px-2">Customer</th><th className="border border-[#e4e7ec] border-r-0 px-2">Vendor</th><th className="border border-[#e4e7ec] border-r-0 px-2">Stages</th><th className="border border-[#e4e7ec] border-r-0 px-2">Project values</th><th className="border border-[#e4e7ec] border-r-0 px-2">Amount Paid</th><th className="border border-[#e4e7ec] border-r-0 px-2">Due Amount</th><th className="border border-[#e4e7ec] border-r-0 px-2">Payment type</th><th className="border border-[#e4e7ec] border-r-0 px-2">Payment Status</th><th className="border border-[#e4e7ec] border-r-0 px-2">Assigned to</th><th className="rounded-r-md border border-[#e4e7ec] px-2">Action</th></tr></thead>
-                          <tbody>{projects.map((row, index) => (<tr key={`${row.id}-${index}`} onClick={() => openViewDrawer(row, index)} className="h-[56px] cursor-pointer text-[12px] text-[#111827] hover:bg-[#f8fbff]"><td className="border border-t-0 border-[#e4e7ec] px-2"><input type="checkbox" onClick={(event) => event.stopPropagation()} className="h-4 w-4 rounded border-[#c5ccd8]" /></td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.id}</td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.customer}</td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.vendor}</td><td className="border border-t-0 border-[#e4e7ec] px-2"><span className={`rounded px-2 py-0.5 text-[10px] font-semibold ${stageClass(row.stage)}`}>{row.stage}</span></td><td className="border border-t-0 border-[#e4e7ec] px-2 font-semibold">{row.projectValue}</td><td className="border border-t-0 border-[#e4e7ec] px-2 font-semibold">{row.amountPaid}</td><td className="border border-t-0 border-[#e4e7ec] px-2 font-semibold">{row.dueAmount}</td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.paymentType}</td><td className="border border-t-0 border-[#e4e7ec] px-2"><span className={`rounded px-2 py-0.5 text-[10px] font-semibold ${paymentClass(row.paymentStatus)}`}>{row.paymentStatus}</span></td><td className="border border-t-0 border-[#e4e7ec] px-2"><div className="inline-flex items-center gap-2 rounded border border-[#d6dbe7] bg-[#f4f6fb] px-2 py-1">{row.assignedTo}<ChevronDown className="h-3.5 w-3.5 text-[#798398]" /></div></td><td className="border border-t-0 border-[#e4e7ec] px-2"><div className="flex items-center gap-1"><button type="button" onClick={(e) => e.stopPropagation()} className="inline-flex h-6 w-6 items-center justify-center"><MessageSquareText className="h-3.5 w-3.5 text-[#9aa2b1]" /></button><button type="button" onClick={(event) => { event.stopPropagation(); openEditDrawer(row, index); }} className="inline-flex h-6 w-6 items-center justify-center"><Pencil className="h-3.5 w-3.5 text-[#111827]" /></button><button type="button" onClick={(e) => e.stopPropagation()} className="inline-flex h-6 w-6 items-center justify-center"><MoreVertical className="h-3.5 w-3.5 text-[#111827]" /></button></div></td></tr>))}</tbody>
+                          <tbody>{isLoading ? Array.from({ length: 6 }).map((_, idx) => (<tr key={`proj-skel-${idx}`} className="h-[56px] text-[12px] text-[#111827]">{Array.from({ length: 12 }).map((__, colIdx) => (<td key={`proj-skel-${idx}-${colIdx}`} className="border border-t-0 border-[#e4e7ec] px-2"><div className="h-3 w-full max-w-[140px] rounded bg-[#e3e7ee]" /></td>))}</tr>)) : projects.map((row, index) => (<tr key={`${row.id}-${index}`} onClick={() => openViewDrawer(row, index)} className="h-[56px] cursor-pointer text-[12px] text-[#111827] hover:bg-[#f8fbff]"><td className="border border-t-0 border-[#e4e7ec] px-2"><input type="checkbox" onClick={(event) => event.stopPropagation()} className="h-4 w-4 rounded border-[#c5ccd8]" /></td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.id}</td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.customer}</td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.vendor}</td><td className="border border-t-0 border-[#e4e7ec] px-2"><span className={`rounded px-2 py-0.5 text-[10px] font-semibold ${stageClass(row.stage)}`}>{row.stage}</span></td><td className="border border-t-0 border-[#e4e7ec] px-2 font-semibold">{row.projectValue}</td><td className="border border-t-0 border-[#e4e7ec] px-2 font-semibold">{row.amountPaid}</td><td className="border border-t-0 border-[#e4e7ec] px-2 font-semibold">{row.dueAmount}</td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.paymentType}</td><td className="border border-t-0 border-[#e4e7ec] px-2"><span className={`rounded px-2 py-0.5 text-[10px] font-semibold ${paymentClass(row.paymentStatus)}`}>{row.paymentStatus}</span></td><td className="border border-t-0 border-[#e4e7ec] px-2"><div className="inline-flex items-center gap-2 rounded border border-[#d6dbe7] bg-[#f4f6fb] px-2 py-1">{row.assignedTo}<ChevronDown className="h-3.5 w-3.5 text-[#798398]" /></div></td><td className="border border-t-0 border-[#e4e7ec] px-2"><div className="flex items-center gap-1"><button type="button" onClick={(e) => e.stopPropagation()} className="inline-flex h-6 w-6 items-center justify-center"><MessageSquareText className="h-3.5 w-3.5 text-[#9aa2b1]" /></button><button type="button" onClick={(event) => { event.stopPropagation(); handleDprDownload(row); }} className="inline-flex h-6 w-6 items-center justify-center"><Download className="h-3.5 w-3.5 text-[#111827]" /></button><button type="button" onClick={(event) => { event.stopPropagation(); handleToggleFavorite(row); }} className="inline-flex h-6 w-6 items-center justify-center"><Star className="h-3.5 w-3.5 text-[#f59e0b]" /></button><button type="button" onClick={(event) => { event.stopPropagation(); openEditDrawer(row, index); }} className="inline-flex h-6 w-6 items-center justify-center"><Pencil className="h-3.5 w-3.5 text-[#111827]" /></button><button type="button" onClick={(e) => e.stopPropagation()} className="inline-flex h-6 w-6 items-center justify-center"><MoreVertical className="h-3.5 w-3.5 text-[#111827]" /></button></div></td></tr>))}</tbody>
                         </table>
                       ) : (
                         <table className="w-[1300px] table-fixed border-separate border-spacing-0 text-left">
                           <colgroup><col className="w-[42px]" /><col className="w-[90px]" /><col className="w-[90px]" /><col className="w-[90px]" /><col className="w-[90px]" /><col className="w-[180px]" /><col className="w-[100px]" /><col className="w-[100px]" /><col className="w-[100px]" /></colgroup>
                           <thead><tr className="sticky top-0 z-10 h-[46px] bg-[#d8e2df] text-[12px] font-semibold text-[#1f2937]"><th className="rounded-l-md border border-[#e4e7ec] border-r-0 px-2"><input type="checkbox" className="h-4 w-4 rounded border-[#c5ccd8]" /></th><th className="border border-[#e4e7ec] border-r-0 px-2"><div className="flex items-center gap-1">lead ID <ArrowUpDown className="h-3 w-3 text-[#8b96a7]" /></div></th><th className="border border-[#e4e7ec] border-r-0 px-2">Customer</th><th className="border border-[#e4e7ec] border-r-0 px-2">Vendor</th><th className="border border-[#e4e7ec] border-r-0 px-2">Source</th><th className="border border-[#e4e7ec] border-r-0 px-2">Address</th><th className="border border-[#e4e7ec] border-r-0 px-2">Milestone</th><th className="border border-[#e4e7ec] border-r-0 px-2">Amount Paid</th><th className="rounded-r-md border border-[#e4e7ec] px-2">Due Amount</th></tr></thead>
-                          <tbody>{leads.map((row, index) => (<tr key={`${row.id}-${index}`} onClick={() => openLeadDetail(row, index)} className="h-[56px] cursor-pointer text-[12px] text-[#111827] hover:bg-[#f8fbff]"><td className="border border-t-0 border-[#e4e7ec] px-2"><input type="checkbox" onClick={(event) => event.stopPropagation()} className="h-4 w-4 rounded border-[#c5ccd8]" /></td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.id}</td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.customer}</td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.vendor}</td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.source}</td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.address}</td><td className="border border-t-0 border-[#e4e7ec] px-2"><span className={`rounded px-2 py-0.5 text-[10px] font-semibold ${stageClass(row.milestone)}`}>{row.milestone}</span></td><td className="border border-t-0 border-[#e4e7ec] px-2 font-semibold">{row.amountPaid}</td><td className="border border-t-0 border-[#e4e7ec] px-2 font-semibold">{row.dueAmount}</td></tr>))}</tbody>
+                          <tbody>{isLoading ? Array.from({ length: 6 }).map((_, idx) => (<tr key={`lead-skel-${idx}`} className="h-[56px] text-[12px] text-[#111827]">{Array.from({ length: 9 }).map((__, colIdx) => (<td key={`lead-skel-${idx}-${colIdx}`} className="border border-t-0 border-[#e4e7ec] px-2"><div className="h-3 w-full max-w-[140px] rounded bg-[#e3e7ee]" /></td>))}</tr>)) : leads.map((row, index) => (<tr key={`${row.id}-${index}`} onClick={() => openLeadDetail(row, index)} className="h-[56px] cursor-pointer text-[12px] text-[#111827] hover:bg-[#f8fbff]"><td className="border border-t-0 border-[#e4e7ec] px-2"><input type="checkbox" onClick={(event) => event.stopPropagation()} className="h-4 w-4 rounded border-[#c5ccd8]" /></td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.id}</td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.customer}</td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.vendor}</td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.source}</td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.address}</td><td className="border border-t-0 border-[#e4e7ec] px-2"><span className={`rounded px-2 py-0.5 text-[10px] font-semibold ${stageClass(row.milestone)}`}>{row.milestone}</span></td><td className="border border-t-0 border-[#e4e7ec] px-2 font-semibold">{row.amountPaid}</td><td className="border border-t-0 border-[#e4e7ec] px-2 font-semibold">{row.dueAmount}</td></tr>))}</tbody>
                         </table>
                       )}
                     </div>
-                    <div className="mt-4 flex items-center justify-between px-1 text-sm text-[#111827]"><div>Page 1 of 10</div><button className="inline-flex h-8 items-center rounded border border-[#d1d5db] px-3 text-sm text-[#4b5563]">Show 10 rows<ChevronDown className="ml-2 h-3.5 w-3.5" /></button></div>
+                    <div className="mt-4 flex items-center justify-between px-1 text-sm text-[#111827]">
+                      <div>Page {page}</div>
+                      <div className="flex items-center gap-2">
+                        <button className="inline-flex h-8 items-center rounded border border-[#d1d5db] px-3 text-sm text-[#4b5563]">
+                          Show {perPage} rows
+                          <ChevronDown className="ml-2 h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          className="h-8 rounded border border-[#d1d5db] px-3 text-[12px] text-[#4b5563]"
+                          onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                        >
+                          Previous
+                        </button>
+                        <button
+                          className="h-8 rounded border border-[#d1d5db] px-3 text-[12px] text-[#4b5563]"
+                          onClick={() => setPage((prev) => (canNextPage ? prev + 1 : prev))}
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </section>
               </>

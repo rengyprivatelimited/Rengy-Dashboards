@@ -20,41 +20,43 @@ import {
   X,
 } from "lucide-react";
 import { RootSidebar } from "@/components/RootSidebar";
-import { mockData } from "@/lib/mock-data";
-import { getVendorDetailData, type VendorDetail, type VendorProjectHistory, type VendorTicketHistory } from "@/features/admin/api/vendor-detail";
+import {
+  getVendorDetailData,
+  updateVendorDetail,
+  updateVendorStatus,
+  type VendorDetail,
+  type VendorProjectHistory,
+  type VendorTicketHistory,
+} from "@/features/admin/api/vendor-detail";
 
 type VendorTab = "overview" | "project" | "ticket" | "account" | "chat";
 
-const fallbackDocs = mockData.vendorDetail.docs;
-const fallbackProjectCards = Array.from({ length: mockData.vendorDetail.projectCardsCount }, (_, i) => i + 1);
-const fallbackTicketRows = mockData.vendorDetail.ticketRows;
-
-const fallbackDetail: VendorDetail = {
-  id: "0",
-  name: "SunTech Installations Pvt. Ltd.",
-  vendorCode: "VND-0029",
-  rating: "4.2",
-  reviewCount: "578",
-  location: "Bangalore, Karnataka",
-  onboardedOn: "12 May 2025",
-  pocName: "Rajesh Sharma",
-  pocEmail: "rajesh@suntechinstall.in",
-  pocPhone: "+9198765 43210",
-  email: "info@abcpvtltd.com",
-  phone: "+9198765 43210",
-  address: "3rd pahae, HSR layout, Bangalore, Karnataka",
-  gstNumber: "384646384",
+const emptyDetail: VendorDetail = {
+  id: "",
+  name: "-",
+  vendorCode: "-",
+  rating: "0",
+  reviewCount: "0",
+  location: "-",
+  onboardedOn: "-",
+  pocName: "-",
+  pocEmail: "-",
+  pocPhone: "-",
+  email: "-",
+  phone: "-",
+  address: "-",
+  gstNumber: "-",
   panNumber: "-",
   bankAccount: "-",
   bankCode: "-",
-  documents: fallbackDocs.map((doc) => ({ name: doc, size: "200KB", type: "PDF", url: "", number: "-", accNumber: "-", code: "-" })),
+  documents: [],
   performance: {
-    totalAssigned: "27",
-    completed: "21",
-    ongoing: "6",
-    avgInstallTime: "12 days",
-    lastAssigned: "2 August 2025",
-    delayed: "8",
+    totalAssigned: "0",
+    completed: "0",
+    ongoing: "0",
+    avgInstallTime: "-",
+    lastAssigned: "-",
+    delayed: "0",
   },
 };
 
@@ -106,9 +108,17 @@ export default function VendorDetailPage() {
   const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
   const [projectSortOpen, setProjectSortOpen] = useState(false);
   const [ticketSortOpen, setTicketSortOpen] = useState(false);
-  const [vendorDetail, setVendorDetail] = useState<VendorDetail>(fallbackDetail);
+  const [vendorDetail, setVendorDetail] = useState<VendorDetail>(emptyDetail);
   const [projectHistory, setProjectHistory] = useState<VendorProjectHistory[]>([]);
   const [ticketHistory, setTicketHistory] = useState<VendorTicketHistory[]>([]);
+  const [editForm, setEditForm] = useState({
+    vendorCode: "",
+    vendorName: "",
+    pocName: "",
+    pocPhone: "",
+    pocEmail: "",
+    address: "",
+  });
   const [reviewSummary, setReviewSummary] = useState({
     average: "0",
     total: "0",
@@ -116,29 +126,19 @@ export default function VendorDetailPage() {
     reviews: [] as Array<{ date: string; author: string; text: string; rating: number }>,
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isStatusUpdating, setIsStatusUpdating] = useState(false);
   const projectSortRef = useRef<HTMLDivElement | null>(null);
   const ticketSortRef = useRef<HTMLDivElement | null>(null);
 
   const projectList = useMemo<VendorProjectHistory[]>(() => {
-    if (projectHistory.length > 0) return projectHistory;
-    return fallbackProjectCards.map((item) => ({
-      id: String(item),
-      name: "Project AMC",
-      status: "Ongoing",
-      client: "Rohith",
-      costRange: "Rs 1.5 Cr - Rs 2.5 Cr",
-    }));
+    return projectHistory;
   }, [projectHistory]);
 
   const ticketList = useMemo<VendorTicketHistory[]>(() => {
-    if (ticketHistory.length > 0) return ticketHistory;
-    return fallbackTicketRows.map((row) => ({
-      id: row.id,
-      project: row.project,
-      status: row.status,
-      created: row.created,
-      resolved: row.resolved,
-    }));
+    return ticketHistory;
   }, [ticketHistory]);
 
   const vendorId = useMemo(() => {
@@ -166,6 +166,7 @@ export default function VendorDetailPage() {
     let isMounted = true;
 
     setIsLoading(true);
+    setLoadError(null);
     getVendorDetailData(vendorId)
       .then((result) => {
         if (!isMounted) return;
@@ -175,7 +176,10 @@ export default function VendorDetailPage() {
         setReviewSummary(result.review);
       })
       .catch((error) => {
-        console.error("Vendor detail API failed. Using fallback data.", error);
+        console.error("Vendor detail API failed.", error);
+        if (isMounted) {
+          setLoadError("Unable to load vendor details right now.");
+        }
       })
       .finally(() => {
         if (!isMounted) return;
@@ -186,6 +190,65 @@ export default function VendorDetailPage() {
       isMounted = false;
     };
   }, [vendorId]);
+
+  useEffect(() => {
+    if (!isEditDrawerOpen) return;
+    setEditForm({
+      vendorCode: vendorDetail.vendorCode,
+      vendorName: vendorDetail.name,
+      pocName: vendorDetail.pocName,
+      pocPhone: vendorDetail.pocPhone,
+      pocEmail: vendorDetail.pocEmail,
+      address: vendorDetail.address,
+    });
+  }, [isEditDrawerOpen, vendorDetail]);
+
+  async function handleSaveVendor() {
+    setActionError(null);
+    setIsSaving(true);
+    try {
+      await updateVendorDetail(vendorId, editForm);
+      setVendorDetail((prev) => ({
+        ...prev,
+        vendorCode: editForm.vendorCode || prev.vendorCode,
+        name: editForm.vendorName || prev.name,
+        pocName: editForm.pocName || prev.pocName,
+        pocPhone: editForm.pocPhone || prev.pocPhone,
+        pocEmail: editForm.pocEmail || prev.pocEmail,
+        address: editForm.address || prev.address,
+        email: editForm.pocEmail || prev.email,
+        phone: editForm.pocPhone || prev.phone,
+      }));
+      setIsEditDrawerOpen(false);
+    } catch (error) {
+      console.error("Vendor update failed.", error);
+      setActionError("Unable to save vendor details right now.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleStatusUpdate(type: "deactivate" | "delete") {
+    if (type === "delete" && !window.confirm("Delete this vendor account? This action cannot be undone.")) {
+      return;
+    }
+    if (type === "deactivate" && !window.confirm("Deactivate this vendor account?")) {
+      return;
+    }
+    setActionError(null);
+    setIsStatusUpdating(true);
+    try {
+      await updateVendorStatus(vendorId, type);
+      if (type === "delete") {
+        router.push("/vendor-management");
+      }
+    } catch (error) {
+      console.error("Vendor status update failed.", error);
+      setActionError("Unable to update vendor status right now.");
+    } finally {
+      setIsStatusUpdating(false);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-[#eceef2] text-[#171b24]" suppressHydrationWarning>
@@ -243,6 +306,16 @@ export default function VendorDetailPage() {
               </>
             ) : (
               <>
+                {loadError ? (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {loadError}
+                  </div>
+                ) : null}
+                {actionError ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                    {actionError}
+                  </div>
+                ) : null}
                 <button
                   className="flex items-center gap-3 text-[#202736]"
                   onClick={() => router.push("/vendor-management")}
@@ -318,30 +391,39 @@ export default function VendorDetailPage() {
                     <StatLine label="Bank Account" value={vendorDetail.bankAccount} />
                     <StatLine label="IFSC Code" value={vendorDetail.bankCode} />
                   </div>
-                  <div className="mt-6">
-                    <div className="mb-2 text-sm text-[#8b93a2]">Documents Uploaded</div>
-                    <div className="space-y-2">
-                      {vendorDetail.documents.length === 0 ? (
-                        <div className="rounded-lg border border-[#dfe3ea] bg-[#f8f9fb] px-4 py-3 text-sm text-[#8b93a2]">
-                          No documents uploaded.
-                        </div>
-                      ) : (
-                        vendorDetail.documents.map((doc, i) => (
-                          <div key={`${doc.name}-${i}`} className="flex items-center justify-between rounded-lg border border-[#dfe3ea] bg-white px-4 py-2">
-                          <div className="flex items-center gap-3">
-                            <div className="rounded bg-[#ffecec] px-2 py-1 text-[10px] font-semibold text-[#e45050]">{doc.type}</div>
-                            <div>
-                              <div className="text-sm font-medium text-[#2a3140]">{doc.name}</div>
-                              <div className="text-xs text-[#8b93a2]">{doc.size}</div>
+                    <div className="mt-6">
+                      <div className="mb-2 text-sm text-[#8b93a2]">Documents Uploaded</div>
+                      <div className="space-y-2">
+                        {vendorDetail.documents.length === 0 ? (
+                          <div className="rounded-lg border border-[#dfe3ea] bg-[#f8f9fb] px-4 py-3 text-sm text-[#8b93a2]">
+                            No documents uploaded.
+                          </div>
+                        ) : (
+                          vendorDetail.documents.map((doc, i) => (
+                            <div key={`${doc.name}-${i}`} className="flex items-center justify-between rounded-lg border border-[#dfe3ea] bg-white px-4 py-2">
+                            <div className="flex items-center gap-3">
+                              <div className="rounded bg-[#ffecec] px-2 py-1 text-[10px] font-semibold text-[#e45050]">{doc.type}</div>
+                              <div>
+                                <div className="text-sm font-medium text-[#2a3140]">{doc.name}</div>
+                                <div className="text-xs text-[#8b93a2]">{doc.size}</div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <button
+                                className="text-[#2aa36b]"
+                                onClick={() => {
+                                  if (doc.url) {
+                                    window.open(doc.url, "_blank", "noopener,noreferrer");
+                                  }
+                                }}
+                              >
+                                <Download className="h-4 w-4" />
+                              </button>
+                              <button className="text-[#ef5353]"><Trash2 className="h-4 w-4" /></button>
                             </div>
                           </div>
-                          <div className="flex items-center gap-3">
-                            <button className="text-[#2aa36b]"><Download className="h-4 w-4" /></button>
-                            <button className="text-[#ef5353]"><Trash2 className="h-4 w-4" /></button>
-                          </div>
-                        </div>
-                        ))
-                      )}
+                          ))
+                        )}
                     </div>
                   </div>
                 </div>
@@ -465,28 +547,34 @@ export default function VendorDetailPage() {
                   </div>
                 </div>
                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-                  {projectList.map((item) => (
-                    <article
-                      key={item.id}
-                      className="rounded-lg border border-[#e4e8ef] bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_8px_20px_rgba(15,23,42,0.03)] transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_2px_6px_rgba(15,23,42,0.08),0_12px_26px_rgba(15,23,42,0.08)]"
-                    >
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-[16px] font-semibold text-[#3a404c]">{item.name}</h3>
-                        <span className="rounded-full bg-[#e8f6e8] px-2 py-0.5 text-[12px] font-semibold text-[#229e2e]">{item.status}</span>
-                      </div>
-                      <div className="my-2 h-px bg-[#d9dde4]" />
-                      <div className="grid grid-cols-2 gap-y-2">
-                        <div>
-                          <div className="text-[12px] text-[#858d9b]">Client</div>
-                          <div className="mt-1 text-[14px] text-[#3e4552]">{item.client}</div>
+                  {projectList.length === 0 ? (
+                    <div className="col-span-full rounded-lg border border-[#e4e8ef] bg-white px-4 py-8 text-sm text-[#8b93a2]">
+                      No project history available.
+                    </div>
+                  ) : (
+                    projectList.map((item) => (
+                      <article
+                        key={item.id}
+                        className="rounded-lg border border-[#e4e8ef] bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_8px_20px_rgba(15,23,42,0.03)] transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_2px_6px_rgba(15,23,42,0.08),0_12px_26px_rgba(15,23,42,0.08)]"
+                      >
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-[16px] font-semibold text-[#3a404c]">{item.name}</h3>
+                          <span className="rounded-full bg-[#e8f6e8] px-2 py-0.5 text-[12px] font-semibold text-[#229e2e]">{item.status}</span>
                         </div>
-                        <div>
-                          <div className="text-[12px] text-[#858d9b]">Cost Range</div>
-                          <div className="mt-1 text-[14px] font-semibold text-[#3e4552]">{item.costRange}</div>
+                        <div className="my-2 h-px bg-[#d9dde4]" />
+                        <div className="grid grid-cols-2 gap-y-2">
+                          <div>
+                            <div className="text-[12px] text-[#858d9b]">Client</div>
+                            <div className="mt-1 text-[14px] text-[#3e4552]">{item.client}</div>
+                          </div>
+                          <div>
+                            <div className="text-[12px] text-[#858d9b]">Cost Range</div>
+                            <div className="mt-1 text-[14px] font-semibold text-[#3e4552]">{item.costRange}</div>
+                          </div>
                         </div>
-                      </div>
-                    </article>
-                  ))}
+                      </article>
+                    ))
+                  )}
                 </div>
               </>
             ) : null}
@@ -521,36 +609,40 @@ export default function VendorDetailPage() {
                 </div>
 
                 <div className="overflow-hidden rounded-lg border border-[#e3e7ee] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.06),0_8px_20px_rgba(15,23,42,0.04)]">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="h-11 text-[13px] text-[#7f8795]">
-                        <th className="px-4">Ticket ID</th>
-                        <th className="px-4">Project Name</th>
-                        <th className="px-4">Status</th>
-                        <th className="px-4">Created On</th>
-                        <th className="px-4">Resolved</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {ticketList.map((row, idx) => (
-                        <tr key={`${row.id}-${idx}`} className="h-12 border-t border-[#edf1f6] text-[14px] text-[#2b3342]">
-                          <td className="px-4 font-medium">{row.id}</td>
-                          <td className="px-4 text-[#6f7787]">{row.project}</td>
-                          <td className="px-4 align-middle">
-                            <span
-                              className={`inline-flex h-6 min-w-[70px] items-center justify-center rounded-full px-2 text-[11px] font-semibold leading-none text-white ${
-                                row.status === "Pending" ? "bg-[#ef5350]" : row.status === "Open" ? "bg-[#f44336]" : "bg-[#20a12a]"
-                              }`}
-                            >
-                              {row.status}
-                            </span>
-                          </td>
-                          <td className="px-4 text-[#596273]">{row.created}</td>
-                          <td className="px-4 text-[#596273]">{row.resolved}</td>
+                  {ticketList.length === 0 ? (
+                    <div className="px-4 py-8 text-sm text-[#8b93a2]">No ticket history available.</div>
+                  ) : (
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="h-11 text-[13px] text-[#7f8795]">
+                          <th className="px-4">Ticket ID</th>
+                          <th className="px-4">Project Name</th>
+                          <th className="px-4">Status</th>
+                          <th className="px-4">Created On</th>
+                          <th className="px-4">Resolved</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {ticketList.map((row, idx) => (
+                          <tr key={`${row.id}-${idx}`} className="h-12 border-t border-[#edf1f6] text-[14px] text-[#2b3342]">
+                            <td className="px-4 font-medium">{row.id}</td>
+                            <td className="px-4 text-[#6f7787]">{row.project}</td>
+                            <td className="px-4 align-middle">
+                              <span
+                                className={`inline-flex h-6 min-w-[70px] items-center justify-center rounded-full px-2 text-[11px] font-semibold leading-none text-white ${
+                                  row.status === "Pending" ? "bg-[#ef5350]" : row.status === "Open" ? "bg-[#f44336]" : "bg-[#20a12a]"
+                                }`}
+                              >
+                                {row.status}
+                              </span>
+                            </td>
+                            <td className="px-4 text-[#596273]">{row.created}</td>
+                            <td className="px-4 text-[#596273]">{row.resolved}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               </>
             ) : null}
@@ -620,11 +712,19 @@ export default function VendorDetailPage() {
                 </div>
 
                 <div className="flex gap-2">
-                  <button className="h-9 w-[220px] rounded border border-[#ef5350] bg-white text-[12px] font-semibold text-[#ef5350]">
-                    Deactivate Account
+                  <button
+                    className="h-9 w-[220px] rounded border border-[#ef5350] bg-white text-[12px] font-semibold text-[#ef5350] disabled:cursor-not-allowed disabled:border-[#f2b4b4] disabled:text-[#f2b4b4]"
+                    onClick={() => handleStatusUpdate("deactivate")}
+                    disabled={isStatusUpdating}
+                  >
+                    {isStatusUpdating ? "Updating..." : "Deactivate Account"}
                   </button>
-                  <button className="h-9 w-[220px] rounded bg-[#eb2f2f] text-[12px] font-semibold text-white">
-                    Delete Account
+                  <button
+                    className="h-9 w-[220px] rounded bg-[#eb2f2f] text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:bg-[#f2a1a1]"
+                    onClick={() => handleStatusUpdate("delete")}
+                    disabled={isStatusUpdating}
+                  >
+                    {isStatusUpdating ? "Updating..." : "Delete Account"}
                   </button>
                 </div>
               </div>
@@ -647,23 +747,33 @@ export default function VendorDetailPage() {
             <div className="space-y-3 px-4 py-3 text-[10px] text-[#2b3445]">
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  ["Vendor ID*", vendorDetail.vendorCode],
-                  ["Vendor Name*", vendorDetail.name],
-                  ["POC", vendorDetail.pocName],
-                  ["POC Phone", vendorDetail.pocPhone],
-                  ["POC Email", vendorDetail.pocEmail],
-                  ["Address", vendorDetail.address],
-                ].map(([label, value]) => (
+                  ["Vendor ID*", "vendorCode"],
+                  ["Vendor Name*", "vendorName"],
+                  ["POC", "pocName"],
+                  ["POC Phone", "pocPhone"],
+                  ["POC Email", "pocEmail"],
+                  ["Address", "address"],
+                ].map(([label, key]) => (
                   <div key={label}>
                     <label className="mb-1 block font-semibold text-[#1f2532]">{label}</label>
-                    <input value={value} readOnly className="h-8 w-full rounded border border-[#d5dbe6] bg-[#f3f4f6] px-2 text-[10px]" />
+                    <input
+                      value={editForm[key as keyof typeof editForm]}
+                      onChange={(event) => setEditForm((prev) => ({ ...prev, [key]: event.target.value }))}
+                      className="h-8 w-full rounded border border-[#d5dbe6] bg-white px-2 text-[10px]"
+                    />
                   </div>
                 ))}
               </div>
             </div>
             <div className="mt-auto grid grid-cols-2 gap-2 px-4 pb-5 pt-3">
               <button className="h-8 rounded border border-[#cfd4df] bg-white text-[10px] font-semibold text-[#30384a]" onClick={() => setIsEditDrawerOpen(false)}>Cancel</button>
-              <button className="h-8 rounded bg-[#11163f] text-[10px] font-semibold text-white" onClick={() => setIsEditDrawerOpen(false)}>Save</button>
+              <button
+                className="h-8 rounded bg-[#11163f] text-[10px] font-semibold text-white disabled:cursor-not-allowed disabled:bg-[#9ca3b1]"
+                onClick={handleSaveVendor}
+                disabled={isSaving}
+              >
+                {isSaving ? "Saving..." : "Save"}
+              </button>
             </div>
           </aside>
         </div>

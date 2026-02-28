@@ -19,55 +19,48 @@ import {
   X,
 } from "lucide-react";
 import { RootSidebar } from "@/components/RootSidebar";
-import { mockData } from "@/lib/mock-data";
+import {
+  getAlerts,
+  getTickets,
+  updateTicket,
+  type AlertRow,
+  type TicketRow,
+  type TicketStatus,
+} from "@/features/admin/api/ticket-alerts";
 
-type TicketPriority = "High" | "Medium";
-type TicketStatus = "Resolved" | "Open";
+const ticketTeams: string[] = [
+  "Sales Team",
+  "Finance",
+  "Design",
+  "Loan Team",
+  "Operation Team",
+  "Supply Chain Team",
+  "AMC Team",
+  "Net Metering Team",
+];
+const ticketPriorities: string[] = ["High", "Medium", "Low"];
+const ticketStatuses: TicketStatus[] = ["Open", "Resolved"];
 
-type TicketRow = {
-  id: number;
-  ticketId: string;
-  raisedBy: string;
-  team: string;
-  description: string;
-  date: string;
-  time: string;
-  priority: TicketPriority;
-  assignedTo: string;
-  status: TicketStatus;
-};
-
-type AlertRow = {
-  id: number;
-  title: string;
-  description: string;
-  severity: "Success" | "Info" | "Error";
-  unread: boolean;
-};
-
-const initialTickets: TicketRow[] = mockData.ticketAlerts.tickets as TicketRow[];
-const initialAlerts: AlertRow[] = mockData.ticketAlerts.alerts as AlertRow[];
-const ticketTeams: string[] = mockData.ticketAlerts.teams as string[];
-const ticketPriorities: string[] = mockData.ticketAlerts.priorities as string[];
-const ticketStatuses: string[] = mockData.ticketAlerts.statusOptions as string[];
-
-function Pagination() {
+function Pagination({
+  page,
+  totalPages,
+  onPrev,
+  onNext,
+}: {
+  page: number;
+  totalPages: number;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
   return (
     <div className="flex items-center justify-between border-t border-[#dfe5ee] px-3 py-2 text-xs">
       <div className="flex items-center gap-3">
-        <span className="text-[#404957]">Page 1 of 10</span>
-        <button className="inline-flex h-8 items-center rounded border border-[#cfd6e1] px-3 text-[#677082]">
-          Show 10 rows
-          <ChevronDown className="ml-2 h-3.5 w-3.5" />
-        </button>
+        <span className="text-[#404957]">Page {page} of {totalPages}</span>
       </div>
       <div className="flex items-center gap-2">
-        <button className="h-8 rounded-md border border-[#d5d9e1] px-3 text-[#414a58]">Previous</button>
-        <button className="h-8 w-7 rounded-md bg-[#12153f] text-white">1</button>
-        {["2", "4", "5", "6", "7"].map((page) => (
-          <button key={page} className="h-8 w-7 rounded-md border border-[#d5d9e1] text-[#606979]">{page}</button>
-        ))}
-        <button className="h-8 rounded-md border border-[#d5d9e1] px-3 text-[#414a58]">Next</button>
+        <button className="h-8 rounded-md border border-[#d5d9e1] px-3 text-[#414a58]" onClick={onPrev} disabled={page <= 1}>Previous</button>
+        <button className="h-8 min-w-[28px] rounded-md bg-[#12153f] px-2 text-white">{page}</button>
+        <button className="h-8 rounded-md border border-[#d5d9e1] px-3 text-[#414a58]" onClick={onNext} disabled={page >= totalPages}>Next</button>
       </div>
     </div>
   );
@@ -75,12 +68,95 @@ function Pagination() {
 
 export default function TicketAlertsPage() {
   const [activeTab, setActiveTab] = useState<"alerts" | "tickets">("alerts");
-  const [tickets, setTickets] = useState<TicketRow[]>(initialTickets);
-  const [alerts, setAlerts] = useState<AlertRow[]>(initialAlerts);
+  const [tickets, setTickets] = useState<TicketRow[]>([]);
+  const [alerts, setAlerts] = useState<AlertRow[]>([]);
+  const [isLoadingTickets, setIsLoadingTickets] = useState(true);
+  const [isLoadingAlerts, setIsLoadingAlerts] = useState(true);
   const [showFilter, setShowFilter] = useState(false);
   const [openTicket, setOpenTicket] = useState<TicketRow | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [searchText, setSearchText] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [selectedFilters, setSelectedFilters] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
+  const [perPage] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
   const filterRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(searchText.trim());
+      setPage(1);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [searchText]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [selectedFilters]);
+
+  useEffect(() => {
+    let isActive = true;
+    const loadTickets = async () => {
+      setIsLoadingTickets(true);
+      try {
+        const searchTokens = [debouncedSearch, ...selectedFilters].filter(Boolean).join(" ");
+        const result = await getTickets({ search: searchTokens, page, perPage });
+        if (!isActive) return;
+        setTickets(result.rows);
+        setTotalPages(result.pagination.totalPages);
+      } catch (error) {
+        console.warn("Failed to load tickets", error);
+      } finally {
+        if (isActive) setIsLoadingTickets(false);
+      }
+    };
+
+    loadTickets();
+    return () => {
+      isActive = false;
+    };
+  }, [debouncedSearch, selectedFilters, page, perPage]);
+
+  useEffect(() => {
+    let isActive = true;
+    const loadAlerts = async () => {
+      setIsLoadingAlerts(true);
+      try {
+        const result = await getAlerts("");
+        if (!isActive) return;
+        setAlerts(result);
+      } catch (error) {
+        console.warn("Failed to load alerts", error);
+      } finally {
+        if (isActive) setIsLoadingAlerts(false);
+      }
+    };
+
+    loadAlerts();
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  const handleUpdateTicket = async (id: number, payload: { status?: TicketStatus; assignedTo?: string }) => {
+    try {
+      await updateTicket(id, payload);
+      setTickets((prev) =>
+        prev.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                status: payload.status ?? item.status,
+                assignedTo: payload.assignedTo ?? item.assignedTo,
+              }
+            : item,
+        ),
+      );
+    } catch (error) {
+      console.warn("Failed to update ticket", error);
+    }
+  };
 
   useEffect(() => {
     function closeFilter(event: MouseEvent) {
@@ -151,39 +227,56 @@ export default function TicketAlertsPage() {
 
             {activeTab === "alerts" ? (
               <div className="mt-3 space-y-2">
-                {alerts.map((alert) => (
-                  <article key={alert.id} className={`rounded-lg border border-[#dde3ec] p-3 ${alert.unread ? "bg-[#eeecff]" : "bg-white"}`}>
-                    <div className="flex items-start gap-3">
-                      <div className={`mt-1 rounded-full p-1.5 ${alert.severity === "Error" ? "bg-[#fde1e1]" : "bg-[#e5ecff]"}`}>
-                        <Mail className="h-3.5 w-3.5 text-[#5f6a82]" />
+                {isLoadingAlerts
+                  ? Array.from({ length: 4 }).map((_, idx) => (
+                      <div key={`alert-skel-${idx}`} className="rounded-lg border border-[#dde3ec] bg-white p-3">
+                        <div className="h-4 w-48 rounded bg-[#e3e7ee]" />
+                        <div className="mt-2 h-3 w-full max-w-[420px] rounded bg-[#eef1f6]" />
+                        <div className="mt-3 h-3 w-24 rounded bg-[#e3e7ee]" />
                       </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-[15px] font-semibold text-[#202737]">{alert.title}</h3>
-                          <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] ${alert.severity === "Success" ? "bg-[#d8f3da] text-[#2f8c41]" : alert.severity === "Info" ? "bg-[#ffe9cf] text-[#9a6a2a]" : "bg-[#ffe0e0] text-[#cf3535]"}`}>
-                            {alert.severity === "Error" ? <AlertCircle className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3" />}
-                            {alert.severity}
-                          </span>
+                    ))
+                  : alerts.length === 0 ? (
+                      <div className="rounded-lg border border-[#dde3ec] bg-white px-4 py-6 text-[13px] text-[#8a93a2]">
+                        No alerts available.
+                      </div>
+                    ) : alerts.map((alert) => (
+                      <article key={alert.id} className={`rounded-lg border border-[#dde3ec] p-3 ${alert.unread ? "bg-[#eeecff]" : "bg-white"}`}>
+                        <div className="flex items-start gap-3">
+                          <div className={`mt-1 rounded-full p-1.5 ${alert.severity === "Error" ? "bg-[#fde1e1]" : "bg-[#e5ecff]"}`}>
+                            <Mail className="h-3.5 w-3.5 text-[#5f6a82]" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h3 className="text-[15px] font-semibold text-[#202737]">{alert.title}</h3>
+                              <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] ${alert.severity === "Success" ? "bg-[#d8f3da] text-[#2f8c41]" : alert.severity === "Info" ? "bg-[#ffe9cf] text-[#9a6a2a]" : "bg-[#ffe0e0] text-[#cf3535]"}`}>
+                                {alert.severity === "Error" ? <AlertCircle className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3" />}
+                                {alert.severity}
+                              </span>
+                            </div>
+                            <p className="mt-0.5 text-[14px] text-[#303846]">{alert.description}</p>
+                          </div>
                         </div>
-                        <p className="mt-0.5 text-[14px] text-[#303846]">{alert.description}</p>
-                      </div>
-                    </div>
-                    <div className="mt-2 flex items-center justify-between border-t border-[#e4e8ef] pt-2 text-[13px] text-[#444e5e]">
-                      <span>Jan 17 , 18:00</span>
-                      <label className="inline-flex items-center gap-2 text-[#878f9d]">
-                        <input type="checkbox" checked={!alert.unread} onChange={() => setAlerts((prev) => prev.map((item) => (item.id === alert.id ? { ...item, unread: !item.unread } : item)))} className="h-4 w-4 rounded border-[#bcc5d2]" />
-                        {alert.unread ? "Mark as unread" : "Mark as read"}
-                      </label>
-                    </div>
-                  </article>
-                ))}
+                        <div className="mt-2 flex items-center justify-between border-t border-[#e4e8ef] pt-2 text-[13px] text-[#444e5e]">
+                          <span>{alert.createdAt || "-"}</span>
+                          <label className="inline-flex items-center gap-2 text-[#878f9d]">
+                            <input type="checkbox" checked={!alert.unread} onChange={() => setAlerts((prev) => prev.map((item) => (item.id === alert.id ? { ...item, unread: !item.unread } : item)))} className="h-4 w-4 rounded border-[#bcc5d2]" />
+                            {alert.unread ? "Mark as unread" : "Mark as read"}
+                          </label>
+                        </div>
+                      </article>
+                    ))}
               </div>
             ) : (
               <div className="mt-3">
                 <div className="mb-2 flex items-center justify-between">
-                  <div className="flex h-8 w-[190px] items-center gap-2 rounded border border-[#d8dde5] px-2.5 text-[11px] text-[#9aa2b1]">
+                  <div className="flex h-8 w-[220px] items-center gap-2 rounded border border-[#d8dde5] px-2.5 text-[11px] text-[#9aa2b1]">
                     <Search className="h-3.5 w-3.5" />
-                    Search
+                    <input
+                      value={searchText}
+                      onChange={(event) => setSearchText(event.target.value)}
+                      placeholder="Search"
+                      className="w-full bg-transparent text-[11px] text-[#1f2533] outline-none placeholder:text-[#9aa2b1]"
+                    />
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="relative" ref={filterRef}>
@@ -198,7 +291,18 @@ export default function TicketAlertsPage() {
                           <button className="flex w-full items-center justify-between px-3 py-2 text-[#5f6675] hover:bg-[#f7f8fb]"><span>Date Range</span><CalendarDays className="h-3.5 w-3.5" /></button>
                           {[...ticketTeams, ...ticketPriorities, ...ticketStatuses].map((item) => (
                             <label key={item} className="flex w-full items-center gap-2 px-3 py-2 text-[#5f6675] hover:bg-[#f7f8fb]">
-                              <input type="checkbox" className="h-3.5 w-3.5 rounded border-[#cad1dd]" />
+                              <input
+                                type="checkbox"
+                                className="h-3.5 w-3.5 rounded border-[#cad1dd]"
+                                checked={selectedFilters.includes(item)}
+                                onChange={(event) => {
+                                  if (event.target.checked) {
+                                    setSelectedFilters((prev) => [...prev, item]);
+                                  } else {
+                                    setSelectedFilters((prev) => prev.filter((value) => value !== item));
+                                  }
+                                }}
+                              />
                               {item}
                             </label>
                           ))}
@@ -228,24 +332,56 @@ export default function TicketAlertsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {tickets.map((row) => (
-                        <tr key={row.id} className="h-[58px] cursor-pointer border-t border-[#e6eaf1] odd:bg-[#f8f9fb]" onClick={() => setOpenTicket(row)}>
-                          <td className="px-2"><input type="checkbox" className="h-4 w-4 rounded border-[#bac3d1]" onClick={(event) => event.stopPropagation()} /></td>
-                          <td className="px-2">{row.ticketId}</td>
-                          <td className="px-2" />
-                          <td className="px-2"><div>{row.raisedBy}</div><div className="font-semibold">{row.team}</div></td>
-                          <td className="px-2">{row.description}</td>
-                          <td className="px-2"><div className="font-semibold">{row.date}</div><div>{row.time}</div></td>
-                          <td className="px-2"><span className={`rounded px-2 py-1 text-[12px] font-semibold ${row.priority === "High" ? "bg-[#ffe3e3] text-[#eb3737]" : "bg-[#f4edd8] text-[#9a7931]"}`}>{row.priority}</span></td>
-                          <td className="px-2"><select className="h-8 w-[140px] rounded border border-[#d7dce7] bg-[#f7f8fb] px-2 text-[13px]" onClick={(event) => event.stopPropagation()}><option>{row.assignedTo}</option></select></td>
-                          <td className="px-2"><span className={`rounded px-2 py-1 text-[12px] font-semibold ${row.status === "Resolved" ? "bg-[#cbefcf] text-[#1e9642]" : "bg-[#ffe4e4] text-[#ea3b3b]"}`}>{row.status}</span></td>
-                          <td className="px-2 text-[#9aa1af]"><MessageSquare className="h-4 w-4" /></td>
-                          <td className="px-2 text-[#586071]"><MoreVertical className="h-4 w-4" /></td>
-                        </tr>
-                      ))}
+                      {isLoadingTickets
+                        ? Array.from({ length: 6 }).map((_, idx) => (
+                            <tr key={`ticket-skel-${idx}`} className="h-[58px] border-t border-[#e6eaf1] odd:bg-[#f8f9fb]">
+                              {Array.from({ length: 11 }).map((__, colIdx) => (
+                                <td key={`ticket-skel-${idx}-${colIdx}`} className="px-2">
+                                  <div className="h-3 w-full max-w-[120px] rounded bg-[#e3e7ee]" />
+                                </td>
+                              ))}
+                            </tr>
+                          ))
+                        : tickets.length === 0 ? (
+                            <tr className="h-[58px] border-t border-[#e6eaf1]">
+                              <td className="px-2 py-4 text-[13px] text-[#8a93a2]" colSpan={11}>
+                                No tickets available.
+                              </td>
+                            </tr>
+                          ) : tickets.map((row) => (
+                            <tr key={row.id} className="h-[58px] cursor-pointer border-t border-[#e6eaf1] odd:bg-[#f8f9fb]" onClick={() => setOpenTicket(row)}>
+                              <td className="px-2"><input type="checkbox" className="h-4 w-4 rounded border-[#bac3d1]" onClick={(event) => event.stopPropagation()} /></td>
+                              <td className="px-2">{row.ticketId}</td>
+                              <td className="px-2" />
+                              <td className="px-2"><div>{row.raisedBy}</div><div className="font-semibold">{row.team}</div></td>
+                              <td className="px-2">{row.description}</td>
+                              <td className="px-2"><div className="font-semibold">{row.date}</div><div>{row.time}</div></td>
+                              <td className="px-2"><span className={`rounded px-2 py-1 text-[12px] font-semibold ${row.priority === "High" ? "bg-[#ffe3e3] text-[#eb3737]" : row.priority === "Low" ? "bg-[#e9f4ff] text-[#2b6db1]" : "bg-[#f4edd8] text-[#9a7931]"}`}>{row.priority}</span></td>
+                              <td className="px-2">
+                                <input
+                                  value={row.assignedTo}
+                                  onChange={(event) => {
+                                    const value = event.target.value;
+                                    setTickets((prev) => prev.map((item) => (item.id === row.id ? { ...item, assignedTo: value } : item)));
+                                  }}
+                                  onBlur={(event) => handleUpdateTicket(row.id, { assignedTo: event.target.value })}
+                                  className="h-8 w-[140px] rounded border border-[#d7dce7] bg-[#f7f8fb] px-2 text-[13px]"
+                                  onClick={(event) => event.stopPropagation()}
+                                />
+                              </td>
+                              <td className="px-2"><span className={`rounded px-2 py-1 text-[12px] font-semibold ${row.status === "Resolved" ? "bg-[#cbefcf] text-[#1e9642]" : "bg-[#ffe4e4] text-[#ea3b3b]"}`}>{row.status}</span></td>
+                              <td className="px-2 text-[#9aa1af]"><MessageSquare className="h-4 w-4" /></td>
+                              <td className="px-2 text-[#586071]"><MoreVertical className="h-4 w-4" /></td>
+                            </tr>
+                          ))}
                     </tbody>
                   </table>
-                  <Pagination />
+                  <Pagination
+                    page={page}
+                    totalPages={totalPages}
+                    onPrev={() => setPage((prev) => Math.max(1, prev - 1))}
+                    onNext={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                  />
                 </div>
               </div>
             )}
@@ -274,6 +410,19 @@ export default function TicketAlertsPage() {
               <div className="flex gap-2"><Building2 className="mt-0.5 h-4 w-4 text-[#1f4b84]" /><div><div className="text-[#465062]">Project</div><div className="mt-1 font-semibold text-[#1f2532]">SunPower Solutions</div></div></div>
               <div className="flex gap-2"><User className="mt-0.5 h-4 w-4 text-[#1f4b84]" /><div><div className="text-[#465062]">Raised by</div><div className="mt-1 font-semibold text-[#1f2532]">{openTicket.raisedBy} ({openTicket.team})</div></div></div>
               <div className="flex gap-2"><Clock3 className="mt-0.5 h-4 w-4 text-[#1f4b84]" /><div><div className="text-[#465062]">Reported on</div><div className="mt-1 font-semibold text-[#1f2532]">{openTicket.date}, {openTicket.time}</div></div></div>
+              <div className="flex gap-2">
+                <User className="mt-0.5 h-4 w-4 text-[#1f4b84]" />
+                <div>
+                  <div className="text-[#465062]">Assigned to</div>
+                  <input
+                    value={openTicket.assignedTo}
+                    onChange={(event) =>
+                      setOpenTicket((prev) => (prev ? { ...prev, assignedTo: event.target.value } : prev))
+                    }
+                    className="mt-1 h-8 w-full rounded border border-[#d6dbe6] bg-white px-2 text-[13px]"
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="px-4 py-3">
@@ -282,10 +431,14 @@ export default function TicketAlertsPage() {
             </div>
 
             <div className="mt-auto grid grid-cols-2 gap-2 px-4 pb-4">
-              <button className="h-10 rounded border border-[#1d2340] bg-white text-[16px] font-semibold text-[#1d2340]">Assign / Reassign</button>
+              <button
+                className="h-10 rounded border border-[#1d2340] bg-white text-[16px] font-semibold text-[#1d2340]"
+                onClick={() => handleUpdateTicket(openTicket.id, { assignedTo: openTicket.assignedTo })}
+              >
+                Assign / Reassign
+              </button>
               <button className="h-10 rounded bg-[#11163f] text-[16px] font-semibold text-white" onClick={() => {
-                setTickets((prev) => prev.map((item) => (item.id === openTicket.id ? { ...item, status: "Resolved" } : item)));
-                setOpenTicket(null);
+                handleUpdateTicket(openTicket.id, { status: "Resolved" }).then(() => setOpenTicket(null));
               }}>Mark as Resolved</button>
             </div>
           </aside>

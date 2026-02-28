@@ -1,7 +1,8 @@
-import { apiRequest } from "@/lib/api/client";
+import { apiRequest, getApiBaseUrl, getApiProxyBaseUrl } from "@/lib/api/client";
 
 export type ProjectListRow = {
   id: string;
+  rawId?: string | number | null;
   customer: string;
   vendor: string;
   stage: string;
@@ -16,6 +17,7 @@ export type ProjectListRow = {
 
 export type LeadListRow = {
   id: string;
+  rawId?: string | number | null;
   customer: string;
   vendor: string;
   source: string;
@@ -40,6 +42,18 @@ export type LeadsProjectsQuery = {
   stage?: number;
   vendorId?: number | string;
   isArchived?: number | boolean;
+  includeProjects?: boolean;
+  includeLeads?: boolean;
+};
+
+export type UpdateLeadPayload = Record<string, unknown>;
+export type CreateLeadPayload = Record<string, unknown>;
+export type AssignVendorPayload = {
+  leadId: number | string;
+  vendorId: number | string;
+};
+export type ToggleFavoritePayload = {
+  leadId: number | string;
 };
 
 function pickList(payload: unknown): unknown[] {
@@ -123,9 +137,11 @@ function mapProjectRow(item: unknown): ProjectListRow {
   const assignedTo = firstNonEmptyString(row.assignedTo, row.assigneeName, row.vendorAssigned, vendor.name, row.vendorName);
   const projectId =
     firstNonEmptyString(row.projectCode, row.projectId, row.referenceNo, row.ticketId) ?? `#PRJ-${toStringValue(row.id, "0")}`;
+  const rawId = row.id ?? row.projectId ?? row.projectCode ?? row.referenceNo;
 
   return {
     id: projectId,
+    rawId: rawId ?? null,
     customer: toStringValue(
       firstNonEmptyString(row.customerName, customer.name, latestPayment.customerName),
     ),
@@ -147,11 +163,13 @@ function mapLeadRow(item: unknown): LeadListRow {
   const row = toObject(item);
   const vendor = toObject(row.vendor ?? row.vendorDetails ?? row.assignedVendor);
   const stageName = firstNonEmptyString(row.stageName, row.stage, row.statusName, row.status, row.milestone);
+  const rawId = row.id ?? row.leadId ?? row.leadCode ?? row.referenceNo ?? row.ticketId;
 
   return {
     id:
       firstNonEmptyString(row.leadId, row.leadCode, row.referenceNo, row.ticketId) ??
       `#LD-${toStringValue(row.id, "0")}`,
+    rawId: rawId ?? null,
     customer: toStringValue(firstNonEmptyString(row.name, row.customerName)),
     vendor: toStringValue(firstNonEmptyString(row.vendorName, vendor.name)),
     source: toStringValue(firstNonEmptyString(row.sourceName, row.sourceType, row.source)),
@@ -166,21 +184,67 @@ function mapLeadRow(item: unknown): LeadListRow {
 }
 
 export async function getLeadsProjectsData(query: LeadsProjectsQuery = {}): Promise<LeadsProjectsData> {
-  const { search = "", page = 1, perPage = 100, stage = 7, vendorId, isArchived } = query;
+  const {
+    search = "",
+    page = 1,
+    perPage = 100,
+    stage = 7,
+    vendorId,
+    isArchived,
+    includeProjects = true,
+    includeLeads = true,
+  } = query;
 
   const [projectsResponse, leadsResponse] = await Promise.all([
-    apiRequest<unknown>("/projects", {
-      method: "GET",
-      query: { export: "", per_page: perPage, page, stage, search },
-    }),
-    apiRequest<unknown>("/leads", {
-      method: "GET",
-      query: { vendorId, isArchived },
-    }),
+    includeProjects
+      ? apiRequest<unknown>("/projects", {
+          method: "GET",
+          query: { export: "", per_page: perPage, page, stage, search, vendorId },
+        })
+      : Promise.resolve({ list: [] }),
+    includeLeads
+      ? apiRequest<unknown>("/leads", {
+          method: "GET",
+          query: { vendorId, isArchived, search, per_page: perPage, page },
+        })
+      : Promise.resolve({ list: [] }),
   ]);
 
   return {
     projects: pickList(projectsResponse).map(mapProjectRow),
     leads: pickList(leadsResponse).map(mapLeadRow),
   };
+}
+
+export async function updateLead(leadId: string | number, payload: UpdateLeadPayload): Promise<unknown> {
+  return apiRequest(`/leads/${leadId}`, {
+    method: "PUT",
+    body: payload,
+  });
+}
+
+export async function createLead(payload: CreateLeadPayload): Promise<unknown> {
+  return apiRequest("/leads", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export async function assignVendor(payload: AssignVendorPayload): Promise<unknown> {
+  return apiRequest("/leads/assign-vendor", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export async function toggleFavorite(payload: ToggleFavoritePayload): Promise<unknown> {
+  return apiRequest("/leads/toggle-favorites", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function buildDprDownloadUrl(projectId: string | number): string {
+  const base = typeof window === "undefined" ? getApiBaseUrl() : getApiProxyBaseUrl();
+  return `${base}/projects/dpr-report/${encodeURIComponent(String(projectId))}`;
 }

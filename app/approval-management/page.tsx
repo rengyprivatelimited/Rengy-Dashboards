@@ -6,8 +6,6 @@ import {
   ArrowUpDown,
   Bell,
   Building2,
-  CalendarDays,
-  ChevronRight,
   Clock3,
   ChevronDown,
   Download,
@@ -23,7 +21,11 @@ import {
   X,
 } from "lucide-react";
 import { RootSidebar } from "@/components/RootSidebar";
-import { getApprovalManagementData } from "@/features/admin/api/approval-management";
+import {
+  buildLoanFilesDownloadUrl,
+  getApprovalManagementData,
+  submitApprovalAction,
+} from "@/features/admin/api/approval-management";
 
 type ApprovalRow = {
   ticketId: string;
@@ -76,65 +78,6 @@ type AmcRow = {
   serviceRequested: string;
 };
 
-const fallbackInstallationRows: InstallationRow[] = [
-  {
-    ticketId: "#INS-1023",
-    projectId: "#PRJ-1023",
-    customer: "Murugan",
-    raisedBy: "Athul",
-    dateCreated: "12-02-2024",
-    installationDateTime: "12-02-2024, 10:30:00",
-    poc: "Athul",
-    documents: [
-      {
-        name: "Screenshot.PNG",
-        url: "",
-        type: "Image",
-        size: "-",
-        uploadedAt: "12-02-2024, 10:30:00",
-      },
-    ],
-    attachments: "2 Files attached",
-    status: "Pending Approval",
-  },
-];
-
-const fallbackOnboardingRows: ApprovalRow[] = [
-  {
-    ticketId: "#ONB-4101",
-    source: "Vendor Portal",
-    name: "Athul",
-    email: "sample@gmail.com",
-    category: "New Vendor",
-    time: "12-02-2026",
-    description: "New lead onboarding request for vendor profile.",
-    priority: "High",
-    attachments: "2 Files attached",
-    documents: [
-      {
-        name: "CompanyProfile.PDF",
-        url: "",
-        type: "PDF",
-        size: "-",
-        uploadedAt: "12-02-2026, 10:30:00",
-      },
-    ],
-    projectId: "#ONB-4101",
-    fintechName: "HDFC Bank",
-    fintechType: "NBFC",
-  },
-];
-
-const fallbackAmcRows: AmcRow[] = [
-  {
-    projectId: "#AMC-1023",
-    customer: "Murugan",
-    address: "4th Floor, RMZ Infinity, Old Madras Road, Bengaluru - 560016",
-    customerContact: "+918912839123",
-    customerEmail: "sample@gmail.com",
-    serviceRequested: "Inspection",
-  },
-];
 
 function StatCard({
   value,
@@ -204,18 +147,38 @@ function getInstallationStatusTone(status: InstallationRow["status"]): string {
 }
 
 export default function ApprovalManagementPage() {
-  const [installationRows, setInstallationRows] = useState<InstallationRow[]>(fallbackInstallationRows);
-  const [onboardingRows, setOnboardingRows] = useState<ApprovalRow[]>(fallbackOnboardingRows);
-  const [amcRows, setAmcRows] = useState<AmcRow[]>(fallbackAmcRows);
+  const [installationRows, setInstallationRows] = useState<InstallationRow[]>([]);
+  const [onboardingRows, setOnboardingRows] = useState<ApprovalRow[]>([]);
+  const [amcRows, setAmcRows] = useState<AmcRow[]>([]);
   const [activeTab, setActiveTab] = useState<ApprovalTab>("Onboarding");
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [userMenuPosition, setUserMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<ApprovalRow | null>(null);
   const [selectedInstallation, setSelectedInstallation] = useState<InstallationRow | null>(null);
   const [drawerMode, setDrawerMode] = useState<DrawerMode>("view");
+  const [editNotes, setEditNotes] = useState("");
+  const [filters, setFilters] = useState({
+    dateFrom: "",
+    dateTo: "",
+    vendor: "",
+    category: "",
+    source: "",
+  });
+  const [draftFilters, setDraftFilters] = useState({
+    dateFrom: "",
+    dateTo: "",
+    vendor: "",
+    category: "",
+    source: "",
+  });
   const filterDropdownRef = useRef<HTMLDivElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const userMenuButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -261,6 +224,48 @@ export default function ApprovalManagementPage() {
   }, [amcRows.length, installationRows, onboardingRows.length]);
 
   const approvalRows = activeTab === "Onboarding" ? onboardingRows : [];
+  const activeRows =
+    activeTab === "Installation Request"
+      ? installationRows
+      : activeTab === "Onboarding"
+        ? onboardingRows
+        : amcRows;
+  const canNextPage = activeRows.length >= perPage;
+
+  const extractId = (value: string) => {
+    const digits = value.replace(/[^\d]/g, "");
+    return digits || null;
+  };
+
+  const handleDownload = (ids: string | null) => {
+    if (!ids) return;
+    const url = buildLoanFilesDownloadUrl(ids);
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const runApprovalAction = async (action: "approve" | "reject" | "resubmit" | "save", payload: {
+    ticketId?: string;
+    projectId?: string;
+    type?: "installation" | "onboarding" | "amc";
+    notes?: string;
+  }) => {
+    try {
+      setActionError(null);
+      await submitApprovalAction({ action, ...payload });
+      if (action === "approve" || action === "reject") {
+        setInstallationRows((prev) =>
+          prev.map((row) =>
+            row.ticketId === payload.ticketId
+              ? { ...row, status: action === "approve" ? "Approved" : "Not Approved" }
+              : row,
+          ),
+        );
+      }
+    } catch (error) {
+      console.error("Approval action failed", error);
+      setActionError("Action failed. API endpoint may be unavailable.");
+    }
+  };
   const openViewDrawer = (row: ApprovalRow) => {
     setDrawerMode("view");
     setSelectedRequest(row);
@@ -274,7 +279,18 @@ export default function ApprovalManagementPage() {
   useEffect(() => {
     let isMounted = true;
 
-    getApprovalManagementData({ search: searchTerm })
+    setIsLoading(true);
+    setLoadError(null);
+    getApprovalManagementData({
+      search: searchTerm,
+      page,
+      perPage,
+      dateFrom: filters.dateFrom,
+      dateTo: filters.dateTo,
+      vendor: filters.vendor,
+      category: filters.category,
+      source: filters.source,
+    })
       .then((result) => {
         if (!isMounted) return;
         setInstallationRows(result.installationRows);
@@ -282,21 +298,36 @@ export default function ApprovalManagementPage() {
         setAmcRows(result.amcRows);
       })
       .catch((error) => {
-        console.error("Approval management API failed. Using fallback data.", error);
+        console.error("Approval management API failed.", error);
+        if (!isMounted) return;
+        setLoadError("Failed to load approval data. Please try again.");
+        setInstallationRows([]);
+        setOnboardingRows([]);
+        setAmcRows([]);
+      })
+      .finally(() => {
+        if (!isMounted) return;
+        setIsLoading(false);
       });
 
     return () => {
       isMounted = false;
     };
-  }, [searchTerm]);
+  }, [searchTerm, page, perPage, filters]);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
       setSearchTerm(searchInput.trim());
+      setPage(1);
     }, 350);
 
     return () => clearTimeout(timeout);
   }, [searchInput]);
+
+  useEffect(() => {
+    if (!selectedRequest) return;
+    setEditNotes(selectedRequest.description ?? "");
+  }, [selectedRequest, drawerMode]);
 
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
@@ -367,6 +398,17 @@ export default function ApprovalManagementPage() {
             <div className="p-3 lg:p-4">
             <h1 className="text-[32px] font-medium leading-none text-[#111827]">Approval Management</h1>
 
+            {loadError ? (
+              <div className="mt-3 rounded border border-[#f1c1c1] bg-[#fff5f5] px-3 py-2 text-[13px] text-[#b91c1c]">
+                {loadError}
+              </div>
+            ) : null}
+            {actionError ? (
+              <div className="mt-2 rounded border border-[#f1c1c1] bg-[#fff5f5] px-3 py-2 text-[13px] text-[#b91c1c]">
+                {actionError}
+              </div>
+            ) : null}
+
             <section className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-4">
               <StatCard
                 value={String(stats.totalRequests)}
@@ -424,35 +466,100 @@ export default function ApprovalManagementPage() {
                   <div className="relative" ref={filterDropdownRef}>
                     <button
                       type="button"
-                      onClick={() => setIsFilterOpen((prev) => !prev)}
+                      onClick={() => {
+                        setDraftFilters(filters);
+                        setIsFilterOpen((prev) => !prev);
+                      }}
                       className="inline-flex h-9 items-center gap-1 rounded border border-[#d8dde5] px-3 text-sm text-[#6b7280]"
                     >
                       <Filter className="h-4 w-4" />
                       Filter
                     </button>
                     {isFilterOpen && (
-                      <div className="absolute right-0 top-11 z-20 w-[230px] overflow-hidden rounded-xl border border-[#d8dde5] bg-white shadow-lg">
-                        <div className="border-b border-[#eceef2] bg-[#edeff3] px-3 py-2 text-sm font-semibold text-[#111827]">
-                          Filter by
+                      <div className="absolute right-0 top-11 z-20 w-[260px] rounded-xl border border-[#d8dde5] bg-white p-3 shadow-lg">
+                        <div className="text-sm font-semibold text-[#111827]">Filter by</div>
+                        <div className="mt-2 space-y-2 text-xs text-[#4b5563]">
+                          <div>
+                            <div className="mb-1 text-[11px] font-semibold">Date From</div>
+                            <input
+                              type="date"
+                              value={draftFilters.dateFrom}
+                              onChange={(event) =>
+                                setDraftFilters((prev) => ({ ...prev, dateFrom: event.target.value }))
+                              }
+                              className="h-8 w-full rounded border border-[#d8dde5] px-2"
+                            />
+                          </div>
+                          <div>
+                            <div className="mb-1 text-[11px] font-semibold">Date To</div>
+                            <input
+                              type="date"
+                              value={draftFilters.dateTo}
+                              onChange={(event) =>
+                                setDraftFilters((prev) => ({ ...prev, dateTo: event.target.value }))
+                              }
+                              className="h-8 w-full rounded border border-[#d8dde5] px-2"
+                            />
+                          </div>
+                          <div>
+                            <div className="mb-1 text-[11px] font-semibold">Vendor</div>
+                            <input
+                              value={draftFilters.vendor}
+                              onChange={(event) =>
+                                setDraftFilters((prev) => ({ ...prev, vendor: event.target.value }))
+                              }
+                              placeholder="Vendor name"
+                              className="h-8 w-full rounded border border-[#d8dde5] px-2"
+                            />
+                          </div>
+                          <div>
+                            <div className="mb-1 text-[11px] font-semibold">Category</div>
+                            <input
+                              value={draftFilters.category}
+                              onChange={(event) =>
+                                setDraftFilters((prev) => ({ ...prev, category: event.target.value }))
+                              }
+                              placeholder="Category"
+                              className="h-8 w-full rounded border border-[#d8dde5] px-2"
+                            />
+                          </div>
+                          <div>
+                            <div className="mb-1 text-[11px] font-semibold">Source</div>
+                            <input
+                              value={draftFilters.source}
+                              onChange={(event) =>
+                                setDraftFilters((prev) => ({ ...prev, source: event.target.value }))
+                              }
+                              placeholder="Source"
+                              className="h-8 w-full rounded border border-[#d8dde5] px-2"
+                            />
+                          </div>
                         </div>
-                        {[
-                          { label: "Date Range", icon: CalendarDays },
-                          { label: "Vendor", icon: ChevronRight },
-                          { label: "Category", icon: ChevronRight },
-                          { label: "Source", icon: ChevronRight },
-                        ].map((option) => {
-                          const Icon = option.icon;
-                          return (
-                            <button
-                              key={option.label}
-                              type="button"
-                              className="flex w-full items-center justify-between border-b border-[#eceef2] px-3 py-2.5 text-left text-sm text-[#656d78] last:border-b-0"
-                            >
-                              {option.label}
-                              <Icon className="h-4 w-4 text-[#757d89]" />
-                            </button>
-                          );
-                        })}
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            className="h-8 rounded border border-[#d8dde5] text-xs text-[#4b5563]"
+                            onClick={() => {
+                              setDraftFilters({ dateFrom: "", dateTo: "", vendor: "", category: "", source: "" });
+                              setFilters({ dateFrom: "", dateTo: "", vendor: "", category: "", source: "" });
+                              setPage(1);
+                              setIsFilterOpen(false);
+                            }}
+                          >
+                            Clear
+                          </button>
+                          <button
+                            type="button"
+                            className="h-8 rounded bg-[#11163f] text-xs font-semibold text-white"
+                            onClick={() => {
+                              setFilters(draftFilters);
+                              setPage(1);
+                              setIsFilterOpen(false);
+                            }}
+                          >
+                            Apply
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -493,8 +600,19 @@ export default function ApprovalManagementPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {installationRows.map((row, index) => (
-                            <tr key={`${row.projectId}-${index}`} className="h-[56px] text-[14px] text-[#111827]">
+                          {isLoading ? (
+                            Array.from({ length: 6 }).map((_, idx) => (
+                              <tr key={`inst-skel-${idx}`} className="h-[56px] text-[14px] text-[#111827]">
+                                {Array.from({ length: 8 }).map((__, colIdx) => (
+                                  <td key={`inst-skel-${idx}-${colIdx}`} className="border border-t-0 border-[#e4e7ec] px-3">
+                                    <div className="h-3 w-full max-w-[140px] rounded bg-[#e3e7ee]" />
+                                  </td>
+                                ))}
+                              </tr>
+                            ))
+                          ) : (
+                            installationRows.map((row, index) => (
+                              <tr key={`${row.projectId}-${index}`} className="h-[56px] text-[14px] text-[#111827]">
                               <td className="border border-t-0 border-[#e4e7ec] px-3">
                                 <input type="checkbox" className="h-4 w-4 rounded border-[#c5ccd8]" />
                               </td>
@@ -508,6 +626,11 @@ export default function ApprovalManagementPage() {
                                   <button
                                     type="button"
                                     className="inline-flex h-7 w-7 items-center justify-center rounded border border-[#cfd6e2] text-[#355f8a]"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      const id = extractId(row.projectId) ?? extractId(row.ticketId);
+                                      handleDownload(id);
+                                    }}
                                   >
                                     <Download className="h-4 w-4" />
                                   </button>
@@ -538,17 +661,35 @@ export default function ApprovalManagementPage() {
                                   View and Approve
                                 </button>
                               </td>
-                            </tr>
-                          ))}
+                              </tr>
+                            ))
+                          )}
                         </tbody>
                       </table>
                     </div>
                     <div className="mt-4 flex items-center justify-between px-1 text-sm text-[#111827]">
-                      <div>Page 1 of 10</div>
-                      <button className="inline-flex h-8 items-center rounded border border-[#d1d5db] px-3 text-sm text-[#4b5563]">
-                        Show 10 rows
-                        <ChevronDown className="ml-2 h-3.5 w-3.5" />
-                      </button>
+                      <div>Page {page}</div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          className="inline-flex h-8 items-center rounded border border-[#d1d5db] px-3 text-sm text-[#4b5563]"
+                          onClick={() => setPerPage(10)}
+                        >
+                          Show {perPage} rows
+                          <ChevronDown className="ml-2 h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          className="h-8 rounded border border-[#d1d5db] px-3 text-[12px] text-[#4b5563]"
+                          onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                        >
+                          Previous
+                        </button>
+                        <button
+                          className="h-8 rounded border border-[#d1d5db] px-3 text-[12px] text-[#4b5563]"
+                          onClick={() => setPage((prev) => (canNextPage ? prev + 1 : prev))}
+                        >
+                          Next
+                        </button>
+                      </div>
                     </div>
                   </>
                 ) : activeTab === "AMC Request" ? (
@@ -583,8 +724,19 @@ export default function ApprovalManagementPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {amcRows.map((row, index) => (
-                            <tr key={`${row.projectId}-${index}`} className="h-[56px] text-[14px] text-[#111827]">
+                          {isLoading ? (
+                            Array.from({ length: 6 }).map((_, idx) => (
+                              <tr key={`amc-skel-${idx}`} className="h-[56px] text-[14px] text-[#111827]">
+                                {Array.from({ length: 7 }).map((__, colIdx) => (
+                                  <td key={`amc-skel-${idx}-${colIdx}`} className="border border-t-0 border-[#e4e7ec] px-3">
+                                    <div className="h-3 w-full max-w-[180px] rounded bg-[#e3e7ee]" />
+                                  </td>
+                                ))}
+                              </tr>
+                            ))
+                          ) : (
+                            amcRows.map((row, index) => (
+                              <tr key={`${row.projectId}-${index}`} className="h-[56px] text-[14px] text-[#111827]">
                               <td className="border border-t-0 border-[#e4e7ec] px-3">
                                 <input type="checkbox" className="h-4 w-4 rounded border-[#c5ccd8]" />
                               </td>
@@ -596,17 +748,32 @@ export default function ApprovalManagementPage() {
                               <td className="border border-t-0 border-[#e4e7ec] px-3">{row.customerContact}</td>
                               <td className="border border-t-0 border-[#e4e7ec] px-3">{row.customerEmail}</td>
                               <td className="border border-t-0 border-[#e4e7ec] px-3">{row.serviceRequested}</td>
-                            </tr>
-                          ))}
+                              </tr>
+                            ))
+                          )}
                         </tbody>
                       </table>
                     </div>
                     <div className="mt-4 flex items-center justify-between px-1 text-sm text-[#111827]">
-                      <div>Page 1 of 10</div>
-                      <button className="inline-flex h-8 items-center rounded border border-[#d1d5db] px-3 text-sm text-[#4b5563]">
-                        Show 10 rows
-                        <ChevronDown className="ml-2 h-3.5 w-3.5" />
-                      </button>
+                      <div>Page {page}</div>
+                      <div className="flex items-center gap-2">
+                        <button className="inline-flex h-8 items-center rounded border border-[#d1d5db] px-3 text-sm text-[#4b5563]">
+                          Show {perPage} rows
+                          <ChevronDown className="ml-2 h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          className="h-8 rounded border border-[#d1d5db] px-3 text-[12px] text-[#4b5563]"
+                          onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                        >
+                          Previous
+                        </button>
+                        <button
+                          className="h-8 rounded border border-[#d1d5db] px-3 text-[12px] text-[#4b5563]"
+                          onClick={() => setPage((prev) => (canNextPage ? prev + 1 : prev))}
+                        >
+                          Next
+                        </button>
+                      </div>
                     </div>
                   </>
                 ) : (
@@ -647,12 +814,23 @@ export default function ApprovalManagementPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {approvalRows.map((row, index) => (
-                            <tr
-                              key={`${row.ticketId}-${index}`}
-                              onClick={() => openViewDrawer(row)}
-                              className="h-[56px] cursor-pointer text-[14px] text-[#111827] hover:bg-[#f8fbff]"
-                            >
+                          {isLoading ? (
+                            Array.from({ length: 6 }).map((_, idx) => (
+                              <tr key={`onb-skel-${idx}`} className="h-[56px] text-[14px] text-[#111827]">
+                                {Array.from({ length: 10 }).map((__, colIdx) => (
+                                  <td key={`onb-skel-${idx}-${colIdx}`} className="border border-t-0 border-[#e4e7ec] px-3">
+                                    <div className="h-3 w-full max-w-[180px] rounded bg-[#e3e7ee]" />
+                                  </td>
+                                ))}
+                              </tr>
+                            ))
+                          ) : (
+                            approvalRows.map((row, index) => (
+                              <tr
+                                key={`${row.ticketId}-${index}`}
+                                onClick={() => openViewDrawer(row)}
+                                className="h-[56px] cursor-pointer text-[14px] text-[#111827] hover:bg-[#f8fbff]"
+                              >
                               <td className="border border-t-0 border-[#e4e7ec] px-3">
                                 <input
                                   type="checkbox"
@@ -689,7 +867,11 @@ export default function ApprovalManagementPage() {
                                 <div className="flex items-center gap-2 text-[#4b5563]">
                                   <button
                                     type="button"
-                                    onClick={(event) => event.stopPropagation()}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      const id = extractId(row.projectId) ?? extractId(row.ticketId);
+                                      handleDownload(id);
+                                    }}
                                     className="inline-flex h-6 w-6 items-center justify-center rounded border border-[#cfd6e2] text-[#355f8a]"
                                   >
                                     <Download className="h-3.5 w-3.5" />
@@ -723,35 +905,34 @@ export default function ApprovalManagementPage() {
                                   </button>
                                 </div>
                               </td>
-                            </tr>
-                          ))}
+                              </tr>
+                            ))
+                          )}
                         </tbody>
                       </table>
                     </div>
 
                     <div className="mt-4 flex items-center justify-between px-1 text-sm text-[#111827]">
-                      <div>Page 1 of 10</div>
+                      <div>Page {page}</div>
                       <div className="flex items-center gap-4">
                         <button className="inline-flex h-8 items-center rounded border border-[#d1d5db] px-3 text-sm text-[#4b5563]">
-                          Show 10 rows
+                          Show {perPage} rows
                           <ChevronDown className="ml-2 h-3.5 w-3.5" />
                         </button>
                         <div className="flex items-center gap-2">
-                          <button className="h-8 rounded border border-[#d1d5db] px-3 text-[12px] text-[#4b5563]">
+                          <button
+                            className="h-8 rounded border border-[#d1d5db] px-3 text-[12px] text-[#4b5563]"
+                            onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                          >
                             Previous
                           </button>
                           <button className="h-8 w-7 rounded bg-[#0f1136] text-[12px] font-semibold text-white">
-                            1
+                            {page}
                           </button>
-                          {["2", "4", "5", "6", "7"].map((page) => (
-                            <button
-                              key={page}
-                              className="h-8 w-7 rounded border border-[#d1d5db] text-[12px] text-[#6b7280]"
-                            >
-                              {page}
-                            </button>
-                          ))}
-                          <button className="h-8 rounded border border-[#d1d5db] px-3 text-[12px] text-[#4b5563]">
+                          <button
+                            className="h-8 rounded border border-[#d1d5db] px-3 text-[12px] text-[#4b5563]"
+                            onClick={() => setPage((prev) => (canNextPage ? prev + 1 : prev))}
+                          >
                             Next
                           </button>
                         </div>
@@ -853,7 +1034,18 @@ export default function ApprovalManagementPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
-                        <button type="button" className="rounded border border-[#cad3e2] bg-white p-1">
+                        <button
+                          type="button"
+                          className="rounded border border-[#cad3e2] bg-white p-1"
+                          onClick={() => {
+                            if (doc.url) {
+                              window.open(doc.url, "_blank", "noopener,noreferrer");
+                              return;
+                            }
+                            const id = extractId(selectedInstallation.projectId) ?? extractId(selectedInstallation.ticketId);
+                            handleDownload(id);
+                          }}
+                        >
                           <Download className="h-3.5 w-3.5 text-[#355f8a]" />
                         </button>
                         <button type="button" className="rounded bg-[#131740] p-1">
@@ -864,16 +1056,43 @@ export default function ApprovalManagementPage() {
                   ))
                 )}
               </div>
-              <button className="mt-4 h-10 w-full rounded bg-[#131740] text-sm font-semibold text-white">
+              <button
+                className="mt-4 h-10 w-full rounded bg-[#131740] text-sm font-semibold text-white"
+                onClick={() =>
+                  runApprovalAction("resubmit", {
+                    ticketId: selectedInstallation.ticketId,
+                    projectId: selectedInstallation.projectId,
+                    type: "installation",
+                  })
+                }
+              >
                 Request Resubmission
               </button>
             </div>
 
             <div className="mt-6 grid grid-cols-2 gap-3">
-              <button className="h-10 rounded border border-[#fca5a5] text-sm font-semibold text-[#ef4444]">
+              <button
+                className="h-10 rounded border border-[#fca5a5] text-sm font-semibold text-[#ef4444]"
+                onClick={() =>
+                  runApprovalAction("reject", {
+                    ticketId: selectedInstallation.ticketId,
+                    projectId: selectedInstallation.projectId,
+                    type: "installation",
+                  })
+                }
+              >
                 Reject
               </button>
-              <button className="h-10 rounded bg-[#131740] text-sm font-semibold text-white">
+              <button
+                className="h-10 rounded bg-[#131740] text-sm font-semibold text-white"
+                onClick={() =>
+                  runApprovalAction("approve", {
+                    ticketId: selectedInstallation.ticketId,
+                    projectId: selectedInstallation.projectId,
+                    type: "installation",
+                  })
+                }
+              >
                 Approve
               </button>
             </div>
@@ -1003,7 +1222,18 @@ export default function ApprovalManagementPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
-                        <button type="button" className="rounded border border-[#cad3e2] bg-white p-1">
+                        <button
+                          type="button"
+                          className="rounded border border-[#cad3e2] bg-white p-1"
+                          onClick={() => {
+                            if (doc.url) {
+                              window.open(doc.url, "_blank", "noopener,noreferrer");
+                              return;
+                            }
+                            const id = extractId(selectedRequest.projectId) ?? extractId(selectedRequest.ticketId);
+                            handleDownload(id);
+                          }}
+                        >
                           <Download className="h-3.5 w-3.5 text-[#355f8a]" />
                         </button>
                         <button type="button" className="rounded bg-[#131740] p-1">
@@ -1020,16 +1250,59 @@ export default function ApprovalManagementPage() {
               <h3 className="text-[22px] font-semibold text-[#111827]">
                 {drawerMode === "edit" ? "Notes" : "Description"}
               </h3>
-              <div className="mt-2 rounded-md border border-[#d4dae4] bg-[#fafafa] px-3 py-3 text-sm text-[#374151]">
-                {selectedRequest.description}
-              </div>
+              {drawerMode === "edit" ? (
+                <textarea
+                  rows={4}
+                  value={editNotes}
+                  onChange={(event) => setEditNotes(event.target.value)}
+                  className="mt-2 w-full rounded-md border border-[#d4dae4] bg-white px-3 py-2 text-sm text-[#374151]"
+                  placeholder="Type notes"
+                />
+              ) : (
+                <div className="mt-2 rounded-md border border-[#d4dae4] bg-[#fafafa] px-3 py-3 text-sm text-[#374151]">
+                  {selectedRequest.description}
+                </div>
+              )}
             </div>
 
-            <div className="mt-6 grid grid-cols-2 gap-3">
-              <button className="h-10 rounded border border-[#fca5a5] text-sm font-semibold text-[#ef4444]">
+            <div className={`mt-6 grid gap-3 ${drawerMode === "edit" ? "grid-cols-3" : "grid-cols-2"}`}>
+              {drawerMode === "edit" ? (
+                <button
+                  className="h-10 rounded border border-[#d1d5db] text-sm font-semibold text-[#374151]"
+                  onClick={() =>
+                    runApprovalAction("save", {
+                      ticketId: selectedRequest.ticketId,
+                      projectId: selectedRequest.projectId,
+                      type: "onboarding",
+                      notes: editNotes,
+                    })
+                  }
+                >
+                  Save
+                </button>
+              ) : null}
+              <button
+                className="h-10 rounded border border-[#fca5a5] text-sm font-semibold text-[#ef4444]"
+                onClick={() =>
+                  runApprovalAction("reject", {
+                    ticketId: selectedRequest.ticketId,
+                    projectId: selectedRequest.projectId,
+                    type: "onboarding",
+                  })
+                }
+              >
                 Reject
               </button>
-              <button className="h-10 rounded bg-[#131740] text-sm font-semibold text-white">
+              <button
+                className="h-10 rounded bg-[#131740] text-sm font-semibold text-white"
+                onClick={() =>
+                  runApprovalAction("approve", {
+                    ticketId: selectedRequest.ticketId,
+                    projectId: selectedRequest.projectId,
+                    type: "onboarding",
+                  })
+                }
+              >
                 Approve
               </button>
             </div>

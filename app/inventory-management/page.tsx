@@ -19,8 +19,12 @@ import {
 } from "lucide-react";
 import { RootSidebar } from "@/components/RootSidebar";
 import {
+  createInventoryItem,
+  deleteInventoryItem,
   getInventoryCategories,
+  getInventoryItemDetail,
   getInventoryItems,
+  updateInventoryItem,
   type InventoryCategory,
   type InventoryItem,
 } from "@/features/admin/api/inventory";
@@ -145,12 +149,35 @@ type InventoryFormDrawerProps = {
   mode: "edit" | "create";
   row: InventoryItem | null;
   onClose: () => void;
-  onSave: (item: InventoryItem) => void;
+  onSave: (payload: {
+    itemName: string;
+    categoryId?: number;
+    brand?: string;
+    count?: string;
+    specification?: string;
+    price?: string;
+  }) => void;
   categoryOptions: string[];
+  categories: InventoryCategory[];
+  isSaving: boolean;
 };
 
-function InventoryFormDrawer({ mode, row, onClose, onSave, categoryOptions }: InventoryFormDrawerProps) {
+function InventoryFormDrawer({ mode, row, onClose, onSave, categoryOptions, categories, isSaving }: InventoryFormDrawerProps) {
   const [categoryValue, setCategoryValue] = useState(row?.category ?? "Select");
+  const [itemName, setItemName] = useState(row?.itemName ?? "");
+  const [brand, setBrand] = useState(row?.brand ?? "");
+  const [specification, setSpecification] = useState(row?.specification ?? "");
+  const [price, setPrice] = useState(row?.currentPrice ?? "");
+  const [count, setCount] = useState(row?.count ?? "");
+
+  useEffect(() => {
+    setCategoryValue(row?.category ?? "Select");
+    setItemName(row?.itemName ?? "");
+    setBrand(row?.brand ?? "");
+    setSpecification(row?.specification ?? "");
+    setPrice(row?.currentPrice ?? "");
+    setCount(row?.count ?? "");
+  }, [row]);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/30">
@@ -168,9 +195,9 @@ function InventoryFormDrawer({ mode, row, onClose, onSave, categoryOptions }: In
           <div>
             <label className="mb-1 block font-semibold">Item name*</label>
             <input
-              value={mode === "edit" ? row?.itemName ?? "Inverter" : "Inverter"}
-              readOnly
-              className="h-9 w-full rounded-md border border-[#d6dbe6] bg-[#f6f7fa] px-2.5"
+              value={itemName}
+              onChange={(event) => setItemName(event.target.value)}
+              className="h-9 w-full rounded-md border border-[#d6dbe6] bg-white px-2.5"
             />
           </div>
           <div>
@@ -179,19 +206,19 @@ function InventoryFormDrawer({ mode, row, onClose, onSave, categoryOptions }: In
           </div>
           <div>
             <label className="mb-1 block font-semibold">Brand*</label>
-            <input value={row?.brand ?? "AMC"} readOnly className="h-9 w-full rounded-md border border-[#d6dbe6] bg-[#f6f7fa] px-2.5" />
+            <input value={brand} onChange={(event) => setBrand(event.target.value)} className="h-9 w-full rounded-md border border-[#d6dbe6] bg-white px-2.5" />
           </div>
           <div>
             <label className="mb-1 block font-semibold">Any Specification</label>
-            <input value="550 W" readOnly className="h-9 w-full rounded-md border border-[#d6dbe6] bg-[#f6f7fa] px-2.5" />
+            <input value={specification} onChange={(event) => setSpecification(event.target.value)} className="h-9 w-full rounded-md border border-[#d6dbe6] bg-white px-2.5" />
           </div>
           <div>
             <label className="mb-1 block font-semibold">Current Price</label>
-            <input value="Rs 2,50,000" readOnly className="h-9 w-full rounded-md border border-[#d6dbe6] bg-[#f6f7fa] px-2.5 font-semibold" />
+            <input value={price} onChange={(event) => setPrice(event.target.value)} className="h-9 w-full rounded-md border border-[#d6dbe6] bg-white px-2.5 font-semibold" />
           </div>
           <div>
             <label className="mb-1 block font-semibold">New Price*</label>
-            <input value="Rs 2,50,000" readOnly className="h-9 w-full rounded-md border border-[#d6dbe6] bg-[#f6f7fa] px-2.5 font-semibold" />
+            <input value={price} onChange={(event) => setPrice(event.target.value)} className="h-9 w-full rounded-md border border-[#d6dbe6] bg-white px-2.5 font-semibold" />
           </div>
           <div>
             <label className="mb-1 block font-semibold">Effective From</label>
@@ -202,7 +229,7 @@ function InventoryFormDrawer({ mode, row, onClose, onSave, categoryOptions }: In
           </div>
           <div>
             <label className="mb-1 block font-semibold">Item Count*</label>
-            <input value={row?.count ?? "01"} readOnly className="h-9 w-full rounded-md border border-[#d6dbe6] bg-[#f6f7fa] px-2.5" />
+            <input value={count} onChange={(event) => setCount(event.target.value)} className="h-9 w-full rounded-md border border-[#d6dbe6] bg-white px-2.5" />
           </div>
         </div>
 
@@ -213,22 +240,19 @@ function InventoryFormDrawer({ mode, row, onClose, onSave, categoryOptions }: In
           <button
             className="h-9 rounded bg-[#11163f] text-[13px] font-semibold text-white"
             onClick={() => {
-              const item: InventoryItem = {
-                id: row?.id ?? Date.now(),
-                itemCode: row?.itemCode ?? `#${String(Date.now()).slice(-4)}`,
-                itemName: row?.itemName ?? "Inverter",
-                category: categoryValue,
-                brand: row?.brand ?? "AMC",
-                count: row?.count ?? "01",
-                specification: row?.specification ?? "550W",
-                updated: row?.updated ?? "12-05-2025",
-                currentPrice: row?.currentPrice ?? "Rs 2,50,000"
-              };
-              onSave(item);
-              onClose();
+              const categoryId = categories.find((category) => category.name === categoryValue)?.id;
+              onSave({
+                itemName: itemName.trim(),
+                categoryId,
+                brand: brand.trim(),
+                count: count.trim(),
+                specification: specification.trim(),
+                price: price.trim(),
+              });
             }}
+            disabled={isSaving}
           >
-            Save
+            {isSaving ? "Saving..." : "Save"}
           </button>
         </div>
       </aside>
@@ -263,7 +287,7 @@ function InventoryDetailDrawer({ row, onClose, onEdit }: InventoryDetailDrawerPr
             <Box className="mt-0.5 h-4 w-4 text-[#1f4b7d]" />
             <div>
               <div className="text-[#5d6679]">Item Name</div>
-              <div className="mt-0.5 font-semibold">PY Invertor ( 552 W)</div>
+              <div className="mt-0.5 font-semibold">{row.itemName}</div>
             </div>
           </div>
           <div className="flex gap-2">
@@ -284,21 +308,21 @@ function InventoryDetailDrawer({ row, onClose, onEdit }: InventoryDetailDrawerPr
             <Boxes className="mt-0.5 h-4 w-4 text-[#1f4b7d]" />
             <div>
               <div className="text-[#5d6679]">Any Specification</div>
-              <div className="mt-0.5 font-semibold">550 W</div>
+              <div className="mt-0.5 font-semibold">{row.specification || "-"}</div>
             </div>
           </div>
           <div className="flex gap-2">
             <Box className="mt-0.5 h-4 w-4 text-[#1f4b7d]" />
             <div>
               <div className="text-[#5d6679]">Price</div>
-              <div className="mt-0.5 font-semibold">Rs 5,12,000</div>
+              <div className="mt-0.5 font-semibold">{row.currentPrice}</div>
             </div>
           </div>
           <div className="flex gap-2">
             <PackageCheck className="mt-0.5 h-4 w-4 text-[#1f4b7d]" />
             <div>
               <div className="text-[#5d6679]">No. Of Counts</div>
-              <div className="mt-0.5 font-semibold">11</div>
+              <div className="mt-0.5 font-semibold">{row.count}</div>
             </div>
           </div>
         </div>
@@ -319,11 +343,22 @@ function InventoryDetailDrawer({ row, onClose, onEdit }: InventoryDetailDrawerPr
 export default function InventoryManagementPage() {
   const [rowsData, setRowsData] = useState<InventoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
+  const [categories, setCategories] = useState<InventoryCategory[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [selectedRow, setSelectedRow] = useState<InventoryItem | null>(null);
   const [editRow, setEditRow] = useState<InventoryItem | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [searchText, setSearchText] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | "">("");
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [refreshKey, setRefreshKey] = useState(0);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -337,20 +372,46 @@ export default function InventoryManagementPage() {
   }, []);
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(searchText.trim());
+      setPage(1);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [searchText]);
+
+  useEffect(() => {
     let isActive = true;
 
     const loadInventory = async () => {
       try {
         setIsLoading(true);
-        const [items, categories] = await Promise.all([
-          getInventoryItems({ search: "", page: 1, perPage: 10 }),
+        setLoadError(null);
+        const results = await Promise.allSettled([
+          getInventoryItems({
+            search: debouncedSearch,
+            categoryId: selectedCategoryId === "" ? "" : selectedCategoryId,
+            page,
+            perPage,
+          }),
           getInventoryCategories(),
         ]);
+        const [itemsResult, categoriesResult] = results;
         if (!isActive) return;
-        setRowsData(items);
-        setCategoryOptions(categories.map((category) => category.name));
+        if (itemsResult.status === "fulfilled") {
+          setRowsData(itemsResult.value.rows);
+          setTotalPages(itemsResult.value.pagination.totalPages);
+        } else {
+          setRowsData([]);
+          setLoadError("Inventory API failed. Please try again.");
+        }
+        if (categoriesResult.status === "fulfilled") {
+          setCategories(categoriesResult.value);
+          setCategoryOptions(categoriesResult.value.map((category) => category.name));
+        } else if (!loadError) {
+          setLoadError("Category API failed. Please try again.");
+        }
       } catch (error) {
-        console.error("Failed to load inventory data", error);
+        setLoadError("Failed to load inventory data. Please try again.");
       } finally {
         if (isActive) setIsLoading(false);
       }
@@ -361,7 +422,7 @@ export default function InventoryManagementPage() {
     return () => {
       isActive = false;
     };
-  }, []);
+  }, [debouncedSearch, selectedCategoryId, page, perPage, refreshKey]);
 
   return (
     <div className="min-h-screen bg-[#eceef2] text-[#171b24]">
@@ -403,13 +464,33 @@ export default function InventoryManagementPage() {
             <div className="mt-4 flex items-center justify-between gap-3">
               <div className="flex h-11 w-[300px] items-center gap-2 rounded-md border border-[#d8dde5] bg-white px-3 text-[14px] text-[#9aa2b1]">
                 <Search className="h-4 w-4" />
-                Search
+                <input
+                  value={searchText}
+                  onChange={(event) => setSearchText(event.target.value)}
+                  placeholder="Search"
+                  className="w-full bg-transparent text-[14px] text-[#1f2533] outline-none placeholder:text-[#9aa2b1]"
+                />
               </div>
               <div className="flex items-center gap-2">
-                <button className="inline-flex h-11 items-center gap-1 rounded-md border border-[#d8dde5] bg-white px-4 text-[13px] text-[#8892a1]">
-                  Category
-                  <ChevronDown className="h-4 w-4" />
-                </button>
+                <div className="relative">
+                  <select
+                    value={selectedCategoryId}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setSelectedCategoryId(value ? Number(value) : "");
+                      setPage(1);
+                    }}
+                    className="inline-flex h-11 items-center gap-1 rounded-md border border-[#d8dde5] bg-white px-4 text-[13px] text-[#8892a1]"
+                  >
+                    <option value="">All Categories</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-3.5 h-4 w-4 text-[#8892a1]" />
+                </div>
                 <button className="inline-flex h-11 items-center gap-1 rounded-md border border-[#d8dde5] bg-white px-4 text-[13px] text-[#8892a1]">
                   Customise
                   <ChevronDown className="h-4 w-4" />
@@ -418,6 +499,11 @@ export default function InventoryManagementPage() {
             </div>
 
             <div className="mt-4 overflow-auto rounded-xl border border-[#dce1e8] bg-white">
+              {loadError ? (
+                <div className="border-b border-[#f5d0d0] bg-[#fff5f5] px-4 py-3 text-[13px] text-[#b91c1c]">
+                  {loadError}
+                </div>
+              ) : null}
               <table className="w-full min-w-[1700px] text-left text-[13px]">
                 <thead>
                   <tr className="h-14 bg-[#d4dfdd] text-[#283245]">
@@ -454,6 +540,11 @@ export default function InventoryManagementPage() {
                           onClick={() => {
                             setSelectedRow(row);
                             setOpenMenuId(null);
+                            setIsDetailLoading(true);
+                            getInventoryItemDetail(row.id)
+                              .then((detail) => setSelectedRow(detail))
+                              .catch(() => setLoadError("Failed to load item details. Please try again."))
+                              .finally(() => setIsDetailLoading(false));
                           }}
                         >
                           <td className="px-3">
@@ -501,8 +592,15 @@ export default function InventoryManagementPage() {
                                     className="flex h-11 w-full items-center gap-2 px-3 text-[12px] text-[#ff3b3b]"
                                     onClick={(event) => {
                                       event.stopPropagation();
-                                      setRowsData((prev) => prev.filter((item) => item.id !== row.id));
-                                      setOpenMenuId(null);
+                                      deleteInventoryItem(row.id)
+                                        .then(() => {
+                                          setRowsData((prev) => prev.filter((item) => item.id !== row.id));
+                                          setRefreshKey((prev) => prev + 1);
+                                        })
+                                        .catch(() => {
+                                          setLoadError("Failed to delete inventory item.");
+                                        })
+                                        .finally(() => setOpenMenuId(null));
                                     }}
                                   >
                                     <Trash2 className="h-5 w-5" />
@@ -519,19 +617,38 @@ export default function InventoryManagementPage() {
 
               <div className="flex items-center justify-between border-t border-[#e6eaf1] px-4 py-3 text-[13px]">
                 <div className="flex items-center gap-4">
-                  <span>Page 1 of 10</span>
-                  <button className="inline-flex h-10 items-center rounded border border-[#d1d5db] px-3 text-[13px] text-[#6b7280]">
-                    Show 10 rows
-                    <ChevronDown className="ml-2 h-4 w-4" />
-                  </button>
+                  <span>Page {page} of {totalPages}</span>
+                  <select
+                    value={perPage}
+                    onChange={(event) => {
+                      setPerPage(Number(event.target.value));
+                      setPage(1);
+                    }}
+                    className="inline-flex h-10 items-center rounded border border-[#d1d5db] bg-white px-3 text-[13px] text-[#6b7280]"
+                  >
+                    {[10, 20, 50].map((size) => (
+                      <option key={size} value={size}>
+                        Show {size} rows
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button className="h-10 rounded border border-[#d1d5db] px-4 text-[13px]">Previous</button>
-                  <button className="h-10 w-8 rounded bg-[#0f1136] text-[13px] text-white">1</button>
-                  {["2", "4", "5", "6", "7"].map((n) => (
-                    <button key={n} className="h-10 w-8 rounded border border-[#d1d5db] text-[13px]">{n}</button>
-                  ))}
-                  <button className="h-10 rounded border border-[#d1d5db] px-4 text-[13px]">Next</button>
+                  <button
+                    className="h-10 rounded border border-[#d1d5db] px-4 text-[13px] disabled:cursor-not-allowed disabled:text-[#9aa2b1]"
+                    onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                    disabled={page <= 1}
+                  >
+                    Previous
+                  </button>
+                  <button className="h-10 min-w-[32px] rounded bg-[#0f1136] px-2 text-[13px] text-white">{page}</button>
+                  <button
+                    className="h-10 rounded border border-[#d1d5db] px-4 text-[13px] disabled:cursor-not-allowed disabled:text-[#9aa2b1]"
+                    onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                    disabled={page >= totalPages}
+                  >
+                    Next
+                  </button>
                 </div>
               </div>
             </div>
@@ -541,11 +658,23 @@ export default function InventoryManagementPage() {
 
       {selectedRow ? (
         <InventoryDetailDrawer
-          row={selectedRow}
+          row={{
+            ...selectedRow,
+            itemName: isDetailLoading ? "Loading..." : selectedRow.itemName,
+            specification: isDetailLoading ? "-" : selectedRow.specification,
+            currentPrice: isDetailLoading ? "-" : selectedRow.currentPrice,
+            count: isDetailLoading ? "-" : selectedRow.count,
+          }}
           onClose={() => setSelectedRow(null)}
-          onEdit={() => {
-            setSelectedRow(null);
-            setEditRow(selectedRow);
+          onEdit={async () => {
+            if (!selectedRow) return;
+            try {
+              const detail = await getInventoryItemDetail(selectedRow.id);
+              setEditRow(detail);
+              setSelectedRow(null);
+            } catch (error) {
+              setLoadError("Failed to load item details. Please try again.");
+            }
           }}
         />
       ) : null}
@@ -555,8 +684,23 @@ export default function InventoryManagementPage() {
           mode="edit"
           row={editRow}
           onClose={() => setEditRow(null)}
-          onSave={(item) => setRowsData((prev) => prev.map((row) => (row.id === item.id ? item : row)))}
+          onSave={async (payload) => {
+            if (!editRow) return;
+            setIsSaving(true);
+            try {
+              await updateInventoryItem(editRow.id, payload);
+              setEditRow(null);
+              setPage(1);
+              setRefreshKey((prev) => prev + 1);
+            } catch (error) {
+              setLoadError("Failed to update inventory item.");
+            } finally {
+              setIsSaving(false);
+            }
+          }}
           categoryOptions={categoryOptions}
+          categories={categories}
+          isSaving={isSaving}
         />
       ) : null}
       {showCreate ? (
@@ -564,8 +708,22 @@ export default function InventoryManagementPage() {
           mode="create"
           row={null}
           onClose={() => setShowCreate(false)}
-          onSave={(item) => setRowsData((prev) => [item, ...prev])}
+          onSave={async (payload) => {
+            setIsSaving(true);
+            try {
+              await createInventoryItem(payload);
+              setShowCreate(false);
+              setPage(1);
+              setRefreshKey((prev) => prev + 1);
+            } catch (error) {
+              setLoadError("Failed to create inventory item.");
+            } finally {
+              setIsSaving(false);
+            }
+          }}
           categoryOptions={categoryOptions}
+          categories={categories}
+          isSaving={isSaving}
         />
       ) : null}
     </div>

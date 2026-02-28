@@ -5,6 +5,7 @@ export type InventoryItem = {
   itemCode: string;
   itemName: string;
   category: string;
+  categoryId?: number;
   brand: string;
   count: string;
   specification: string;
@@ -14,8 +15,30 @@ export type InventoryItem = {
 
 export type InventoryQuery = {
   search?: string;
+  categoryId?: string | number;
   page?: number;
   perPage?: number;
+};
+
+export type InventoryPagination = {
+  page: number;
+  perPage: number;
+  total: number;
+  totalPages: number;
+};
+
+export type InventoryListResult = {
+  rows: InventoryItem[];
+  pagination: InventoryPagination;
+};
+
+export type InventoryInput = {
+  itemName: string;
+  categoryId?: number;
+  brand?: string;
+  count?: string | number;
+  specification?: string;
+  price?: string | number;
 };
 
 export type InventoryCategory = {
@@ -69,6 +92,33 @@ function pickList(payload: unknown): unknown[] {
   return [];
 }
 
+function pickPagination(payload: unknown, fallback: InventoryPagination): InventoryPagination {
+  const root = toObject(payload);
+  const data = root.data;
+
+  let pagination: Record<string, unknown> = {};
+  if (Array.isArray(data)) {
+    const paginationEntry = data.find((entry) => toObject(entry).id === "pagination");
+    const list = toObject(paginationEntry).list;
+    if (Array.isArray(list) && list.length > 0) {
+      pagination = toObject(list[0]);
+    } else {
+      pagination = toObject(paginationEntry);
+    }
+  } else {
+    pagination = toObject(root.pagination ?? toObject(data).pagination ?? root.meta ?? toObject(data).meta);
+  }
+
+  const page = toNumber(pagination.page ?? pagination.currentPage ?? pagination.current_page) ?? fallback.page;
+  const perPage = toNumber(pagination.perPage ?? pagination.per_page ?? pagination.pageSize) ?? fallback.perPage;
+  const total = toNumber(pagination.total ?? pagination.totalRecords ?? pagination.total_items) ?? fallback.total;
+  const totalPages =
+    toNumber(pagination.totalPages ?? pagination.total_pages) ??
+    (perPage > 0 ? Math.max(1, Math.ceil(total / perPage)) : fallback.totalPages);
+
+  return { page, perPage, total, totalPages };
+}
+
 function formatDate(value: unknown): string {
   const raw = typeof value === "string" ? value.trim() : "";
   if (!raw) return "-";
@@ -98,6 +148,7 @@ function mapInventoryItem(item: unknown): InventoryItem {
     itemCode: toStringValue(row.itemCode ?? row.code ?? row.sku ?? row.id),
     itemName: toStringValue(row.itemName ?? row.name ?? row.productName),
     category: toStringValue(row.categoryName ?? category.name ?? row.category),
+    categoryId: toNumber(category.id ?? row.categoryId ?? row.category_id) ?? undefined,
     brand: toStringValue(row.brand ?? row.brandName ?? row.make),
     count: toStringValue(row.itemCount ?? row.count ?? row.stock ?? row.quantity),
     specification: toStringValue(row.specification ?? row.specifications ?? row.spec),
@@ -114,21 +165,49 @@ function mapInventoryCategory(item: unknown): InventoryCategory {
   };
 }
 
-export async function getInventoryItems(query: InventoryQuery): Promise<InventoryItem[]> {
-  const { search = "", page = 1, perPage = 10 } = query;
+export async function getInventoryItems(query: InventoryQuery): Promise<InventoryListResult> {
+  const { search = "", categoryId = "", page = 1, perPage = 10 } = query;
   const response = await apiRequest<unknown>("/inventory", {
     method: "GET",
     query: {
       search,
+      categoryId,
       page,
       per_page: perPage,
     },
   });
 
-  return pickList(response).map(mapInventoryItem);
+  const rows = pickList(response).map(mapInventoryItem);
+  const pagination = pickPagination(response, {
+    page,
+    perPage,
+    total: rows.length,
+    totalPages: 1,
+  });
+
+  return { rows, pagination };
 }
 
 export async function getInventoryCategories(): Promise<InventoryCategory[]> {
   const response = await apiRequest<unknown>("/common/category", { method: "GET" });
   return pickList(response).map(mapInventoryCategory);
+}
+
+export async function getInventoryItemDetail(id: number): Promise<InventoryItem> {
+  const response = await apiRequest<unknown>(`/inventory/${id}`, { method: "GET" });
+  const list = pickList(response);
+  const item = list[0] ?? response;
+  return mapInventoryItem(item);
+}
+
+export async function createInventoryItem(payload: InventoryInput): Promise<unknown> {
+  return apiRequest("/inventory", { method: "POST", body: payload });
+}
+
+export async function updateInventoryItem(id: number, payload: InventoryInput): Promise<unknown> {
+  return apiRequest(`/inventory/${id}`, { method: "PUT", body: payload });
+}
+
+export async function deleteInventoryItem(id: number): Promise<unknown> {
+  return apiRequest(`/inventory/${id}`, { method: "DELETE" });
 }
