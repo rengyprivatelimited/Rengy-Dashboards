@@ -26,33 +26,16 @@ import {
   X,
 } from "lucide-react";
 import { RootSidebar } from "@/components/RootSidebar";
-import { mockData } from "@/lib/mock-data";
+import {
+  LOAN_STATUS_OPTIONS,
+  getLoanRequests,
+  getLoanStatuses,
+  type LoanRequestRow,
+  type LoanStatus,
+  type LoanStatusRow,
+} from "@/features/admin/api/loan-management";
 
-type LoanRequestRow = {
-  id: number;
-  leadId: string;
-  customer: string;
-  vendor: string;
-  projectValue: string;
-  bank: string;
-  requestedOn: string;
-};
-
-type LoanStatus = "Documents Pending" | "Rejected" | "Hold" | "Disbursed" | "Approved" | "Log In Pending";
-
-type LoanStatusRow = LoanRequestRow & {
-  updatedOn: string;
-  status: LoanStatus;
-  remarks: string;
-  disbursedAmount: string;
-  pendingAmount: string;
-  region: string;
-};
-
-const loanRequests: LoanRequestRow[] = mockData.loanManagement.loanRequests as LoanRequestRow[];
-const loanStatuses: LoanStatusRow[] = mockData.loanManagement.loanStatuses as LoanStatusRow[];
-
-const statusOptions: LoanStatus[] = mockData.loanManagement.statusOptions as LoanStatus[];
+const statusOptions: LoanStatus[] = LOAN_STATUS_OPTIONS;
 
 function statusClassName(status: LoanStatus) {
   if (status === "Documents Pending") return "bg-[#f8dcc5] text-[#8a5a2a]";
@@ -81,24 +64,27 @@ function PageSelect() {
   );
 }
 
-function AttachmentCell() {
+function AttachmentCell({ count }: { count: number }) {
+  const label = count > 0 ? `${count} File${count > 1 ? "s" : ""} attached` : "No files";
   return (
     <div className="flex items-center gap-2">
-      <span>2 Files attached</span>
-      <button
-        className="inline-flex h-7 w-7 items-center justify-center rounded border border-[#cfd5df] text-[#244f80]"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <Download className="h-4 w-4" />
-      </button>
+      <span>{label}</span>
+      {count > 0 ? (
+        <button
+          className="inline-flex h-7 w-7 items-center justify-center rounded border border-[#cfd5df] text-[#244f80]"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <Download className="h-4 w-4" />
+        </button>
+      ) : null}
     </div>
   );
 }
 
 export default function LoanManagementPage() {
   const [activeTab, setActiveTab] = useState<"requests" | "status">("requests");
-  const [requestRows, setRequestRows] = useState<LoanRequestRow[]>(loanRequests);
-  const [statusRows, setStatusRows] = useState<LoanStatusRow[]>(loanStatuses);
+  const [requestRows, setRequestRows] = useState<LoanRequestRow[]>([]);
+  const [statusRows, setStatusRows] = useState<LoanStatusRow[]>([]);
   const [showFilter, setShowFilter] = useState(false);
   const [openMenuRow, setOpenMenuRow] = useState<number | null>(null);
   const [openStatusRow, setOpenStatusRow] = useState<number | null>(null);
@@ -124,6 +110,30 @@ export default function LoanManagementPage() {
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadLoanData = async () => {
+      try {
+        const [requests, statuses] = await Promise.all([
+          getLoanRequests({ loanApprove: 0, perPage: 10, page: 1 }),
+          getLoanStatuses({ loanApprove: 1, perPage: 10, page: 1 }),
+        ]);
+        if (!isActive) return;
+        setRequestRows(requests);
+        setStatusRows(statuses);
+      } catch (error) {
+        console.error("Failed to load loan data", error);
+      }
+    };
+
+    loadLoanData();
+
+    return () => {
+      isActive = false;
+    };
   }, []);
 
   const rows = activeTab === "requests" ? requestRows : statusRows;
@@ -269,7 +279,7 @@ export default function LoanManagementPage() {
                         <th className="border-b border-[#dce1e8] px-2">
                           <input type="checkbox" className="h-4 w-4 rounded border-[#bac3d1]" />
                         </th>
-                        <th className="border-b border-[#dce1e8] px-2">Lead ID</th>
+                        <th className="border-b border-[#dce1e8] px-2">Loan Ref No</th>
                         <th className="border-b border-[#dce1e8] px-2">customer</th>
                         <th className="border-b border-[#dce1e8] px-2 text-center">
                           <ArrowUpDown className="mx-auto h-3.5 w-3.5" />
@@ -301,14 +311,14 @@ export default function LoanManagementPage() {
                               onClick={(event) => event.stopPropagation()}
                             />
                           </td>
-                          <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.leadId}</td>
-                          <td className="border-b border-[#dce1e8] px-2">{row.customer}</td>
+                          <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.loanRefNo}</td>
+                          <td className="border-b border-[#dce1e8] px-2">{row?.lead?.name}</td>
                           <td className="border-b border-[#dce1e8] px-2" />
                           <td className="border-b border-[#dce1e8] px-2">{row.vendor}</td>
                           <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.projectValue}</td>
                           <td className="border-b border-[#dce1e8] px-2">{row.bank}</td>
                           <td className="border-b border-[#dce1e8] px-2">
-                            <AttachmentCell />
+                            <AttachmentCell count={row.attachments?.length ?? 0} />
                           </td>
                           <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.requestedOn}</td>
                           <td className="relative border-b border-[#dce1e8] px-2">
@@ -378,7 +388,7 @@ export default function LoanManagementPage() {
                         <th className="border-b border-[#dce1e8] px-2">
                           <input type="checkbox" className="h-4 w-4 rounded border-[#bac3d1]" />
                         </th>
-                        <th className="border-b border-[#dce1e8] px-2">Lead ID</th>
+                        <th className="border-b border-[#dce1e8] px-2">Loan Ref No</th>
                         <th className="border-b border-[#dce1e8] px-2">customer</th>
                         <th className="border-b border-[#dce1e8] px-2 text-center">
                           <ArrowUpDown className="mx-auto h-3.5 w-3.5" />
@@ -415,14 +425,14 @@ export default function LoanManagementPage() {
                               onClick={(event) => event.stopPropagation()}
                             />
                           </td>
-                          <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.leadId}</td>
-                          <td className="border-b border-[#dce1e8] px-2">{row.customer}</td>
+                          <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.loanRefNo}</td>
+                          <td className="border-b border-[#dce1e8] px-2">{row.lead?.name ?? row.customer}</td>
                           <td className="border-b border-[#dce1e8] px-2" />
                           <td className="border-b border-[#dce1e8] px-2">{row.vendor}</td>
                           <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.projectValue}</td>
                           <td className="border-b border-[#dce1e8] px-2">{row.bank}</td>
                           <td className="border-b border-[#dce1e8] px-2">
-                            <AttachmentCell />
+                            <AttachmentCell count={row.attachments?.length ?? 0} />
                           </td>
                           <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.updatedOn}</td>
                           <td className="border-b border-[#dce1e8] px-2">
@@ -551,7 +561,7 @@ export default function LoanManagementPage() {
               <div className="border-b border-[#dfe3ea] px-4 py-3">
                 <div className="flex items-start justify-between">
                   <div>
-                    <div className="text-[24px] font-semibold leading-none text-[#1f2432]">{viewRow.leadId}</div>
+                    <div className="text-[24px] font-semibold leading-none text-[#1f2432]">{viewRow.loanRefNo}</div>
                     <div className="mt-1 text-xs font-medium leading-none text-[#2a3141]">{viewRow.customer}</div>
                   </div>
                   <button
@@ -571,28 +581,34 @@ export default function LoanManagementPage() {
                     <User className="mt-0.5 h-4 w-4 text-[#1c4b7e]" strokeWidth={1.7} />
                     <div>
                       <div className="text-[12px] text-[#3f495d]">Customer name</div>
-                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">Murugan</div>
+                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">
+                        {viewRow.customer}
+                      </div>
                     </div>
                   </div>
                   <div className="flex gap-2">
                     <CalendarDays className="mt-0.5 h-4 w-4 text-[#1c4b7e]" strokeWidth={1.7} />
                     <div>
                       <div className="text-[12px] text-[#3f495d]">Requested On</div>
-                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">12-02-2022</div>
+                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">
+                        {viewRow.requestedOn}
+                      </div>
                     </div>
                   </div>
                   <div className="flex gap-2">
                     <User className="mt-0.5 h-4 w-4 text-[#1c4b7e]" strokeWidth={1.7} />
                     <div>
                       <div className="text-[12px] text-[#3f495d]">Vendor</div>
-                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">Athul</div>
+                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">{viewRow.vendor}</div>
                     </div>
                   </div>
                   <div className="flex gap-2">
                     <Phone className="mt-0.5 h-4 w-4 text-[#1c4b7e]" strokeWidth={1.7} />
                     <div>
                       <div className="text-[12px] text-[#3f495d]">Vendor Phone</div>
-                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">+912312 1231</div>
+                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">
+                        {viewRow.vendorPhone}
+                      </div>
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -613,14 +629,18 @@ export default function LoanManagementPage() {
                     <User className="mt-0.5 h-4 w-4 text-[#1c4b7e]" strokeWidth={1.7} />
                     <div>
                       <div className="text-[12px] text-[#3f495d]">Bank POC</div>
-                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">Athul</div>
+                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">
+                        {viewRow.bankPocName}
+                      </div>
                     </div>
                   </div>
                   <div className="flex gap-2">
                     <Phone className="mt-0.5 h-4 w-4 text-[#1c4b7e]" strokeWidth={1.7} />
                     <div>
                       <div className="text-[12px] text-[#3f495d]">Contact</div>
-                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">+912312 1231</div>
+                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">
+                        {viewRow.bankPocPhone}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -629,7 +649,7 @@ export default function LoanManagementPage() {
                   <label className="mb-1 block text-xs font-semibold text-[#1f2532]">Assigned To</label>
                   <div className="relative">
                     <select className="h-8 w-full appearance-none rounded border border-[#bcc5d5] bg-[#edf0f3] px-2 text-[10px] text-[#1d2433]">
-                      <option>Athul</option>
+                      <option>{viewRow.assignedTo || "Unassigned"}</option>
                     </select>
                     <ChevronDown className="pointer-events-none absolute right-2 top-2 h-4 w-4 text-[#576074]" />
                   </div>
@@ -643,33 +663,36 @@ export default function LoanManagementPage() {
                       <span>Files Submitted</span>
                       <span>Action</span>
                     </div>
-                    {["Aadhaar card", "Pan card", "Bank Statement"].map((file, index) => (
-                      <div key={file} className="grid grid-cols-[1fr_1fr_1fr] items-center border-t border-[#dfe3ea] bg-[#f4f5f7] px-3 py-3">
-                        <div className="text-[11px] font-medium text-[#1d2433]">{file}</div>
-                        <div>
-                          {index < 2 ? (
-                            <>
-                              <div className="text-[10px] font-medium text-[#1d2433]">12312-123123-123123</div>
-                              <button className="mt-1 inline-flex items-center gap-1 rounded border border-[#b6c0d2] bg-white px-1.5 py-0.5 text-[10px] text-[#273247]">
-                                2 Files attached
-                                <Download className="h-3.5 w-3.5 text-[#1d4f84]" />
-                              </button>
-                            </>
-                          ) : (
-                            <button className="inline-flex items-center gap-1 rounded border border-[#b6c0d2] bg-white px-1.5 py-0.5 text-[10px] text-[#273247]">
-                              2 Files attached
+                    {viewRow.attachments.length ? (
+                      viewRow.attachments.map((file, index) => (
+                        <div
+                          key={`${file.id}-${index}`}
+                          className="grid grid-cols-[1fr_1fr_1fr] items-center border-t border-[#dfe3ea] bg-[#f4f5f7] px-3 py-3"
+                        >
+                          <div className="text-[11px] font-medium text-[#1d2433]">{file.type}</div>
+                          <div>
+                            <div className="text-[10px] font-medium text-[#1d2433]">{file.reference}</div>
+                            <button
+                              className="mt-1 inline-flex items-center gap-1 rounded border border-[#b6c0d2] bg-white px-1.5 py-0.5 text-[10px] text-[#273247]"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              1 File attached
                               <Download className="h-3.5 w-3.5 text-[#1d4f84]" />
                             </button>
-                          )}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-[#4ad66d] bg-[#e8ffef] text-[#2f9e44]">OK</span>
+                            <button className="rounded border border-[#f2a0a0] bg-white px-2 py-1 text-[10px] text-[#e53935]">
+                              Request Re - Submit
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-[#4ad66d] bg-[#e8ffef] text-[#2f9e44]">✓</span>
-                          <button className="rounded border border-[#f2a0a0] bg-white px-2 py-1 text-[10px] text-[#e53935]">
-                            Request Re - Submit
-                          </button>
-                        </div>
+                      ))
+                    ) : (
+                      <div className="border-t border-[#dfe3ea] bg-[#f4f5f7] px-3 py-3 text-[11px] text-[#6b7280]">
+                        No attachments submitted.
                       </div>
-                    ))}
+                    )}
                   </div>
                 </div>
 
@@ -694,7 +717,7 @@ export default function LoanManagementPage() {
               <div className="border-b border-[#dfe3ea] px-4 py-3">
                 <div className="flex items-start justify-between">
                   <div>
-                    <div className="text-[24px] font-semibold leading-none text-[#1f2432]">{viewRow.leadId}</div>
+                    <div className="text-[24px] font-semibold leading-none text-[#1f2432]">{viewRow.loanRefNo}</div>
                     <div className="mt-1 text-xs font-medium leading-none text-[#2a3141]">{viewRow.customer}</div>
                   </div>
                   <button
@@ -714,49 +737,61 @@ export default function LoanManagementPage() {
                     <User className="mt-0.5 h-4 w-4 text-[#1c4b7e]" strokeWidth={1.7} />
                     <div>
                       <div className="text-[12px] font-medium text-[#3f495d]">Customer</div>
-                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">Athul</div>
+                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">
+                        {viewRow.customer}
+                      </div>
                     </div>
                   </div>
                   <div className="flex gap-2">
                     <Phone className="mt-0.5 h-4 w-4 text-[#1c4b7e]" strokeWidth={1.7} />
                     <div>
                       <div className="text-[12px] font-medium text-[#3f495d]">Customer Phone</div>
-                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">+912312 1231</div>
+                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">
+                        {viewRow.customerPhone}
+                      </div>
                     </div>
                   </div>
                   <div className="flex gap-2">
                     <User className="mt-0.5 h-4 w-4 text-[#1c4b7e]" strokeWidth={1.7} />
                     <div>
                       <div className="text-[12px] font-medium text-[#3f495d]">Vendor</div>
-                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">{viewRow.vendor.split(" ")[0]}</div>
+                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">{viewRow.vendor}</div>
                     </div>
                   </div>
                   <div className="flex gap-2">
                     <Phone className="mt-0.5 h-4 w-4 text-[#1c4b7e]" strokeWidth={1.7} />
                     <div>
                       <div className="text-[12px] font-medium text-[#3f495d]">Vendor Phone</div>
-                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">+912312 1231</div>
+                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">
+                        {viewRow.vendorPhone}
+                      </div>
                     </div>
                   </div>
                   <div className="flex gap-2">
                     <User className="mt-0.5 h-4 w-4 text-[#1c4b7e]" strokeWidth={1.7} />
                     <div>
                       <div className="text-[12px] font-medium text-[#3f495d]">Bank POC</div>
-                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">Athul</div>
+                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">
+                        {viewRow.bankPocName}
+                      </div>
                     </div>
                   </div>
                   <div className="flex gap-2">
                     <Phone className="mt-0.5 h-4 w-4 text-[#1c4b7e]" strokeWidth={1.7} />
                     <div>
                       <div className="text-[12px] font-medium text-[#3f495d]">Bank POC Phone</div>
-                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">+912312 1231</div>
+                      <div className="mt-1 text-xs font-semibold leading-none text-[#1d2433]">
+                        {viewRow.bankPocPhone}
+                      </div>
                     </div>
                   </div>
                   <div className="flex gap-2">
                     <Mail className="mt-0.5 h-4 w-4 text-[#1c4b7e]" strokeWidth={1.7} />
                     <div>
                       <div className="text-[12px] font-medium text-[#3f495d]">vendor email</div>
-                      <div className="mt-1 break-all text-xs font-semibold leading-none text-[#1d2433]">sample@gmail.com</div>
+                      <div className="mt-1 break-all text-xs font-semibold leading-none text-[#1d2433]">
+                        {viewRow.vendorEmail}
+                      </div>
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -824,27 +859,42 @@ export default function LoanManagementPage() {
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-[#1f2532]">Files</label>
                   <div className="space-y-2">
-                    {["Aadhaar card.PDF", "Bank Statement .PDF", "Pan card .PDF"].map((fileName) => (
-                      <div key={fileName} className="flex items-center justify-between rounded-md border border-[#c7d2e4] bg-[#dfe7f5] p-2">
+                    {viewRow.attachments.length ? (
+                      viewRow.attachments.map((file, index) => (
+                      <div
+                        key={`${file.id}-${index}`}
+                        className="flex items-center justify-between rounded-md border border-[#c7d2e4] bg-[#dfe7f5] p-2"
+                      >
                         <div className="flex items-center gap-2">
                           <div className="rounded bg-white p-1.5">
                             <FileText className="h-3.5 w-3.5 text-[#3a7bd5]" />
                           </div>
                           <div>
-                            <div className="text-[12px] font-semibold text-[#1f2532]">{fileName}</div>
-                            <div className="text-[10px] text-[#6f7788]">12 June, 10:30 PM</div>
+                            <div className="text-[12px] font-semibold text-[#1f2532]">{file.name}</div>
+                            <div className="text-[10px] text-[#6f7788]">{file.createdAt}</div>
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
-                          <button className="rounded border border-[#b7c2d8] bg-white p-1 text-[#204b7a]">
+                          <button
+                            className="rounded border border-[#b7c2d8] bg-white p-1 text-[#204b7a]"
+                            onClick={(event) => event.stopPropagation()}
+                          >
                             <Download className="h-3.5 w-3.5" />
                           </button>
-                          <button className="rounded bg-[#10153d] p-1 text-white">
+                          <button
+                            className="rounded bg-[#10153d] p-1 text-white"
+                            onClick={(event) => event.stopPropagation()}
+                          >
                             <Eye className="h-3.5 w-3.5" />
                           </button>
                         </div>
                       </div>
-                    ))}
+                      ))
+                    ) : (
+                      <div className="rounded-md border border-[#c7d2e4] bg-[#f7f8fa] p-2 text-[10px] text-[#6f7788]">
+                        No files uploaded.
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -869,8 +919,8 @@ export default function LoanManagementPage() {
             <div className="space-y-3 px-4 py-3 text-[10px] text-[#2b3445]">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-[#6f7788]">Lead ID</label>
-                  <input value="#121212" readOnly className="h-8 w-full rounded border border-[#e0e4ec] bg-[#f9fafc] px-2" />
+                  <label className="mb-1 block text-[#6f7788]">Loan Ref No</label>
+                  <input value={updateRow.loanRefNo} readOnly className="h-8 w-full rounded border border-[#e0e4ec] bg-[#f9fafc] px-2" />
                 </div>
                 <div>
                   <label className="mb-1 block text-[#6f7788]">Customer Name*</label>
@@ -878,7 +928,7 @@ export default function LoanManagementPage() {
                 </div>
                 <div>
                   <label className="mb-1 block text-[#6f7788]">Customer Number</label>
-                  <input value="+912312312" readOnly className="h-8 w-full rounded border border-[#e0e4ec] bg-[#f9fafc] px-2" />
+                  <input value={updateRow.customerPhone} readOnly className="h-8 w-full rounded border border-[#e0e4ec] bg-[#f9fafc] px-2" />
                 </div>
                 <div>
                   <label className="mb-1 block text-[#6f7788]">Project Value</label>
@@ -895,7 +945,7 @@ export default function LoanManagementPage() {
                 </div>
                 <div>
                   <label className="mb-1 block text-[#6f7788]">Vendor Phone</label>
-                  <input value="+912232312" readOnly className="h-8 w-full rounded border border-[#e0e4ec] bg-[#f9fafc] px-2" />
+                  <input value={updateRow.vendorPhone} readOnly className="h-8 w-full rounded border border-[#e0e4ec] bg-[#f9fafc] px-2" />
                 </div>
               </div>
 
@@ -959,44 +1009,42 @@ export default function LoanManagementPage() {
               <div>
                 <label className="mb-1 block font-semibold text-[#1f2532]">Files</label>
                 <div className="space-y-1.5">
-                  <div className="flex items-center justify-between rounded border border-[#cfd7e7] bg-[#eaf1ff] p-2">
-                    <div className="flex items-center gap-2">
-                      <div className="rounded bg-white p-1">
-                        <FileText className="h-3.5 w-3.5 text-[#3a7bd5]" />
+                  {updateRow.attachments.length ? (
+                    updateRow.attachments.map((file, index) => (
+                      <div
+                        key={`${file.id}-${index}`}
+                        className="flex items-center justify-between rounded border border-[#cfd7e7] bg-[#eaf1ff] p-2"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="rounded bg-white p-1">
+                            <FileText className="h-3.5 w-3.5 text-[#3a7bd5]" />
+                          </div>
+                          <div>
+                            <div className="text-[10px] font-semibold">{file.name}</div>
+                            <div className="text-[9px] text-[#6f7788]">{file.createdAt}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            className="rounded border border-[#ef8f8f] p-1 text-[#e24b4b]"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            className="rounded bg-[#10153d] p-1 text-white"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
-                      <div>
-                        <div className="text-[10px] font-semibold">Aadhaar card.PDF</div>
-                        <div className="text-[9px] text-[#6f7788]">12 June, 10:30 PM</div>
-                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded border border-[#cfd7e7] bg-[#f7f8fa] p-2 text-[10px] text-[#6f7788]">
+                      No files uploaded.
                     </div>
-                    <div className="flex items-center gap-1">
-                      <button className="rounded border border-[#ef8f8f] p-1 text-[#e24b4b]">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                      <button className="rounded bg-[#10153d] p-1 text-white">
-                        <Eye className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between rounded border border-[#cfd7e7] bg-[#eaf1ff] p-2">
-                    <div className="flex items-center gap-2">
-                      <div className="rounded bg-white p-1">
-                        <FileText className="h-3.5 w-3.5 text-[#3a7bd5]" />
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-semibold">Bank statement.PDF</div>
-                        <div className="text-[9px] text-[#6f7788]">12 June, 10:30 PM</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button className="rounded border border-[#ef8f8f] p-1 text-[#e24b4b]">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                      <button className="rounded bg-[#10153d] p-1 text-white">
-                        <Eye className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
+                  )}
                   <button className="flex h-8 w-full items-center justify-center gap-1 rounded border border-[#3f4a67] bg-white text-[10px] font-semibold text-[#303954]">
                     <Upload className="h-3.5 w-3.5" />
                     Upload Files
@@ -1035,4 +1083,3 @@ export default function LoanManagementPage() {
     </div>
   );
 }
-

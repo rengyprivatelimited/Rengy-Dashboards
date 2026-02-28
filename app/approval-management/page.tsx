@@ -23,7 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { RootSidebar } from "@/components/RootSidebar";
-import { mockData } from "@/lib/mock-data";
+import { getApprovalManagementData } from "@/features/admin/api/approval-management";
 
 type ApprovalRow = {
   ticketId: string;
@@ -35,6 +35,16 @@ type ApprovalRow = {
   description: string;
   priority: "High" | "Medium" | "Low";
   attachments: string;
+  documents: Array<{
+    name: string;
+    url: string;
+    type: string;
+    size: string;
+    uploadedAt: string;
+  }>;
+  projectId: string;
+  fintechName: string | null;
+  fintechType: string | null;
 };
 
 type ApprovalTab = "Installation Request" | "Onboarding" | "AMC Request";
@@ -45,6 +55,15 @@ type InstallationRow = {
   customer: string;
   raisedBy: string;
   dateCreated: string;
+  installationDateTime: string;
+  poc: string;
+  documents: Array<{
+    name: string;
+    url: string;
+    type: string;
+    size: string;
+    uploadedAt: string;
+  }>;
   attachments: string;
   status: "Not Approved" | "Approved" | "Pending Approval";
 };
@@ -57,9 +76,65 @@ type AmcRow = {
   serviceRequested: string;
 };
 
-const installationRows: InstallationRow[] = mockData.approvalManagement.installationRows as InstallationRow[];
-const onboardingRows: ApprovalRow[] = mockData.approvalManagement.onboardingRows as ApprovalRow[];
-const amcRows: AmcRow[] = mockData.approvalManagement.amcRows as AmcRow[];
+const fallbackInstallationRows: InstallationRow[] = [
+  {
+    ticketId: "#INS-1023",
+    projectId: "#PRJ-1023",
+    customer: "Murugan",
+    raisedBy: "Athul",
+    dateCreated: "12-02-2024",
+    installationDateTime: "12-02-2024, 10:30:00",
+    poc: "Athul",
+    documents: [
+      {
+        name: "Screenshot.PNG",
+        url: "",
+        type: "Image",
+        size: "-",
+        uploadedAt: "12-02-2024, 10:30:00",
+      },
+    ],
+    attachments: "2 Files attached",
+    status: "Pending Approval",
+  },
+];
+
+const fallbackOnboardingRows: ApprovalRow[] = [
+  {
+    ticketId: "#ONB-4101",
+    source: "Vendor Portal",
+    name: "Athul",
+    email: "sample@gmail.com",
+    category: "New Vendor",
+    time: "12-02-2026",
+    description: "New lead onboarding request for vendor profile.",
+    priority: "High",
+    attachments: "2 Files attached",
+    documents: [
+      {
+        name: "CompanyProfile.PDF",
+        url: "",
+        type: "PDF",
+        size: "-",
+        uploadedAt: "12-02-2026, 10:30:00",
+      },
+    ],
+    projectId: "#ONB-4101",
+    fintechName: "HDFC Bank",
+    fintechType: "NBFC",
+  },
+];
+
+const fallbackAmcRows: AmcRow[] = [
+  {
+    projectId: "#AMC-1023",
+    customer: "Murugan",
+    address: "4th Floor, RMZ Infinity, Old Madras Road, Bengaluru - 560016",
+    customerContact: "+918912839123",
+    customerEmail: "sample@gmail.com",
+    serviceRequested: "Inspection",
+  },
+];
 
 function StatCard({
   value,
@@ -94,8 +169,47 @@ function StatCard({
   );
 }
 
+function parseHumanDate(value: string): Date | null {
+  const raw = value.trim();
+  if (!raw || raw === "-") return null;
+
+  if (raw.includes(",")) {
+    const [datePart, timePart] = raw.split(",");
+    const [day, month, year] = datePart.trim().split("-").map(Number);
+    if (!day || !month || !year) return null;
+    const [hour, minute, second] = timePart.trim().split(":").map(Number);
+    return new Date(year, month - 1, day, hour || 0, minute || 0, second || 0);
+  }
+
+  if (raw.includes("-")) {
+    const [day, month, year] = raw.split("-").map(Number);
+    if (!day || !month || !year) return null;
+    return new Date(year, month - 1, day);
+  }
+
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatDays(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  const text = rounded % 1 === 0 ? String(rounded.toFixed(0)) : String(rounded.toFixed(1));
+  return `${text} days`;
+}
+
+function getInstallationStatusTone(status: InstallationRow["status"]): string {
+  if (status === "Approved") return "text-[#1a8f2e]";
+  if (status === "Not Approved") return "text-[#ef4444]";
+  return "text-[#f59e0b]";
+}
+
 export default function ApprovalManagementPage() {
+  const [installationRows, setInstallationRows] = useState<InstallationRow[]>(fallbackInstallationRows);
+  const [onboardingRows, setOnboardingRows] = useState<ApprovalRow[]>(fallbackOnboardingRows);
+  const [amcRows, setAmcRows] = useState<AmcRow[]>(fallbackAmcRows);
   const [activeTab, setActiveTab] = useState<ApprovalTab>("Onboarding");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [userMenuPosition, setUserMenuPosition] = useState<{ top: number; left: number } | null>(null);
@@ -111,8 +225,40 @@ export default function ApprovalManagementPage() {
       { label: "Onboarding" as const, count: String(onboardingRows.length).padStart(2, "0") },
       { label: "AMC Request" as const, count: String(amcRows.length).padStart(2, "0") },
     ],
-    [],
+    [installationRows.length, onboardingRows.length, amcRows.length],
   );
+
+  const stats = useMemo(() => {
+    const totalRequests = installationRows.length + onboardingRows.length + amcRows.length;
+    const approved = installationRows.filter((row) => row.status === "Approved").length;
+    const rejected = installationRows.filter((row) => row.status === "Not Approved").length;
+    const pendingInstallations = installationRows.filter((row) => row.status === "Pending Approval").length;
+    const pending = pendingInstallations + onboardingRows.length + amcRows.length;
+
+    const approvalDurations = installationRows
+      .filter((row) => row.status === "Approved")
+      .map((row) => {
+        const start = parseHumanDate(row.dateCreated);
+        const end = parseHumanDate(row.installationDateTime);
+        if (!start || !end) return null;
+        const diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+        return Number.isFinite(diff) && diff >= 0 ? diff : null;
+      })
+      .filter((value): value is number => value !== null);
+
+    const avgApproveTime =
+      approvalDurations.length > 0
+        ? formatDays(approvalDurations.reduce((sum, value) => sum + value, 0) / approvalDurations.length)
+        : "-";
+
+    return {
+      totalRequests,
+      pending,
+      approved,
+      rejected,
+      avgApproveTime,
+    };
+  }, [amcRows.length, installationRows, onboardingRows.length]);
 
   const approvalRows = activeTab === "Onboarding" ? onboardingRows : [];
   const openViewDrawer = (row: ApprovalRow) => {
@@ -124,6 +270,33 @@ export default function ApprovalManagementPage() {
     setDrawerMode("edit");
     setSelectedRequest(row);
   };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    getApprovalManagementData({ search: searchTerm })
+      .then((result) => {
+        if (!isMounted) return;
+        setInstallationRows(result.installationRows);
+        setOnboardingRows(result.onboardingRows);
+        setAmcRows(result.amcRows);
+      })
+      .catch((error) => {
+        console.error("Approval management API failed. Using fallback data.", error);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [searchTerm]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setSearchTerm(searchInput.trim());
+    }, 350);
+
+    return () => clearTimeout(timeout);
+  }, [searchInput]);
 
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
@@ -195,15 +368,27 @@ export default function ApprovalManagementPage() {
             <h1 className="text-[32px] font-medium leading-none text-[#111827]">Approval Management</h1>
 
             <section className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-4">
-              <StatCard value="132" title="Total Requests" note="+18 vs last 30 days" />
               <StatCard
-                value="20"
+                value={String(stats.totalRequests)}
+                title="Total Requests"
+                note="Across installation, onboarding, and AMC requests"
+              />
+              <StatCard
+                value={String(stats.pending)}
                 title="Pending Approvals"
-                note="5 Loan requests rejected by 8 days"
+                note={`${stats.rejected} rejected installation request${stats.rejected === 1 ? "" : "s"}`}
                 emphasized
               />
-              <StatCard value="2.4 days" title="Avg Approve time" note="Avg Delays reduced by 8%" />
-              <StatCard value="87" title="Approved" note="Improved by 12%" />
+              <StatCard
+                value={stats.avgApproveTime}
+                title="Avg Approve time"
+                note="Based on approved installation requests"
+              />
+              <StatCard
+                value={String(stats.approved)}
+                title="Approved"
+                note="Approved installation requests"
+              />
             </section>
 
             <section className="mt-4 rounded-md border border-[#d8dde5] bg-white">
@@ -228,7 +413,12 @@ export default function ApprovalManagementPage() {
               <div className="flex items-center justify-between gap-2 border-b border-[#e4e7ec] p-3">
                 <div className="flex h-9 w-[260px] items-center gap-2 rounded border border-[#d8dde5] px-3 text-[12px] text-[#9aa2b1]">
                   <Search className="h-4 w-4" />
-                  Search
+                  <input
+                    value={searchInput}
+                    onChange={(event) => setSearchInput(event.target.value)}
+                    placeholder="Search"
+                    className="h-full w-full bg-transparent text-[12px] text-[#111827] outline-none placeholder:text-[#9aa2b1]"
+                  />
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="relative" ref={filterDropdownRef}>
@@ -592,7 +782,10 @@ export default function ApprovalManagementPage() {
             <div className="flex items-start justify-between border-b border-[#e6eaf0] pb-3">
               <div>
                 <h2 className="text-[24px] font-semibold text-[#111827]">
-                  Installation Requests <span className="text-[24px] text-[#ef4444]">High</span>
+                  Installation Requests{" "}
+                  <span className={`text-[24px] ${getInstallationStatusTone(selectedInstallation.status)}`}>
+                    {selectedInstallation.status}
+                  </span>
                 </h2>
                 <p className="text-xs text-[#6b7280]">Ticket ID: {selectedInstallation.ticketId}</p>
               </div>
@@ -612,14 +805,14 @@ export default function ApprovalManagementPage() {
                   <User className="mt-0.5 h-4 w-4 text-[#355f8a]" />
                   <div>
                     <div className="text-xs text-[#6b7280]">Project /Lead ID</div>
-                    <div>1FT-12312</div>
+                    <div>{selectedInstallation.projectId}</div>
                   </div>
                 </div>
                 <div className="flex items-start gap-2">
                   <Clock3 className="mt-0.5 h-4 w-4 text-[#355f8a]" />
                   <div>
                     <div className="text-xs text-[#6b7280]">Installation Time & Date</div>
-                    <div>12-12-2025, 10:30 PM</div>
+                    <div>{selectedInstallation.installationDateTime}</div>
                   </div>
                 </div>
                 <div className="flex items-start gap-2">
@@ -633,7 +826,7 @@ export default function ApprovalManagementPage() {
                   <User className="mt-0.5 h-4 w-4 text-[#355f8a]" />
                   <div>
                     <div className="text-xs text-[#6b7280]">POC</div>
-                    <div>Rahul Sharma (Vendor)</div>
+                    <div>{selectedInstallation.poc}</div>
                   </div>
                 </div>
               </div>
@@ -642,28 +835,34 @@ export default function ApprovalManagementPage() {
             <div className="mt-4 border-b border-[#e6eaf0] pb-4">
               <h3 className="text-[22px] font-semibold text-[#111827]">Documents</h3>
               <div className="mt-3 space-y-2">
-                {["Screenshot.PNG", "Screenshot.PNG", "Screenshot.PNG"].map((fileName, index) => (
-                  <div
-                    key={`${fileName}-${index}`}
-                    className="flex items-center justify-between rounded-md border border-[#dbe2ee] bg-[#f3f6fb] px-2 py-1.5"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Folder className="h-4 w-4 text-[#3b82f6]" />
-                      <div>
-                        <div className="text-xs font-semibold text-[#1f2937]">{fileName}</div>
-                        <div className="text-[11px] text-[#9aa2b1]">12 June, 10:30 PM</div>
+                {selectedInstallation.documents.length === 0 ? (
+                  <div className="rounded-md border border-[#dbe2ee] bg-[#f9fafb] px-3 py-2 text-xs text-[#6b7280]">
+                    No documents attached.
+                  </div>
+                ) : (
+                  selectedInstallation.documents.map((doc, index) => (
+                    <div
+                      key={`${doc.name}-${index}`}
+                      className="flex items-center justify-between rounded-md border border-[#dbe2ee] bg-[#f3f6fb] px-2 py-1.5"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Folder className="h-4 w-4 text-[#3b82f6]" />
+                        <div>
+                          <div className="text-xs font-semibold text-[#1f2937]">{doc.name}</div>
+                          <div className="text-[11px] text-[#9aa2b1]">{doc.uploadedAt}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button type="button" className="rounded border border-[#cad3e2] bg-white p-1">
+                          <Download className="h-3.5 w-3.5 text-[#355f8a]" />
+                        </button>
+                        <button type="button" className="rounded bg-[#131740] p-1">
+                          <Eye className="h-3.5 w-3.5 text-white" />
+                        </button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <button type="button" className="rounded border border-[#cad3e2] bg-white p-1">
-                        <Download className="h-3.5 w-3.5 text-[#355f8a]" />
-                      </button>
-                      <button type="button" className="rounded bg-[#131740] p-1">
-                        <Eye className="h-3.5 w-3.5 text-white" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
               <button className="mt-4 h-10 w-full rounded bg-[#131740] text-sm font-semibold text-white">
                 Request Resubmission
@@ -748,14 +947,14 @@ export default function ApprovalManagementPage() {
                   <Clock3 className="mt-0.5 h-4 w-4 text-[#355f8a]" />
                   <div>
                     <div className="text-xs text-[#6b7280]">Time & Date</div>
-                    <div>{selectedRequest.time}, 10:30 PM</div>
+                    <div>{selectedRequest.time}</div>
                   </div>
                 </div>
                 <div className="flex items-start gap-2">
                   <User className="mt-0.5 h-4 w-4 text-[#355f8a]" />
                   <div>
                     <div className="text-xs text-[#6b7280]">Project / Lead ID</div>
-                    <div>1FT-12312</div>
+                    <div>{selectedRequest.projectId}</div>
                   </div>
                 </div>
               </div>
@@ -769,14 +968,14 @@ export default function ApprovalManagementPage() {
                     <Building2 className="mt-0.5 h-4 w-4 text-[#355f8a]" />
                     <div>
                       <div className="text-xs text-[#6b7280]">Fintech name</div>
-                      <div>HDFC Bank</div>
+                      <div>{selectedRequest.fintechName ?? "-"}</div>
                     </div>
                   </div>
                   <div className="flex items-start gap-2">
                     <Building2 className="mt-0.5 h-4 w-4 text-[#355f8a]" />
                     <div>
                       <div className="text-xs text-[#6b7280]">Type</div>
-                      <div>NBFC</div>
+                      <div>{selectedRequest.fintechType ?? "-"}</div>
                     </div>
                   </div>
                 </div>
@@ -786,28 +985,34 @@ export default function ApprovalManagementPage() {
             <div className="mt-4 border-b border-[#e6eaf0] pb-4">
               <h3 className="text-[22px] font-semibold text-[#111827]">Documents</h3>
               <div className="mt-3 space-y-2">
-                {["Screenshot.JPG", "Agreement.PDF", "Compliance.PNG"].map((fileName) => (
-                  <div
-                    key={fileName}
-                    className="flex items-center justify-between rounded-md border border-[#dbe2ee] bg-[#f3f6fb] px-2 py-1.5"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Folder className="h-4 w-4 text-[#3b82f6]" />
-                      <div>
-                        <div className="text-xs font-semibold text-[#1f2937]">{fileName}</div>
-                        <div className="text-[11px] text-[#9aa2b1]">12 June, 10:30 PM</div>
+                {selectedRequest.documents.length === 0 ? (
+                  <div className="rounded-md border border-[#dbe2ee] bg-[#f9fafb] px-3 py-2 text-xs text-[#6b7280]">
+                    No documents attached.
+                  </div>
+                ) : (
+                  selectedRequest.documents.map((doc, index) => (
+                    <div
+                      key={`${doc.name}-${index}`}
+                      className="flex items-center justify-between rounded-md border border-[#dbe2ee] bg-[#f3f6fb] px-2 py-1.5"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Folder className="h-4 w-4 text-[#3b82f6]" />
+                        <div>
+                          <div className="text-xs font-semibold text-[#1f2937]">{doc.name}</div>
+                          <div className="text-[11px] text-[#9aa2b1]">{doc.uploadedAt}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button type="button" className="rounded border border-[#cad3e2] bg-white p-1">
+                          <Download className="h-3.5 w-3.5 text-[#355f8a]" />
+                        </button>
+                        <button type="button" className="rounded bg-[#131740] p-1">
+                          <Eye className="h-3.5 w-3.5 text-white" />
+                        </button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <button type="button" className="rounded border border-[#cad3e2] bg-white p-1">
-                        <Download className="h-3.5 w-3.5 text-[#355f8a]" />
-                      </button>
-                      <button type="button" className="rounded bg-[#131740] p-1">
-                        <Eye className="h-3.5 w-3.5 text-white" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
 
@@ -834,4 +1039,3 @@ export default function ApprovalManagementPage() {
     </div>
   );
 }
-

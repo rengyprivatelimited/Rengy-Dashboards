@@ -9,7 +9,7 @@ Base API URL: `https://api.rengy.in/api/v1`
 Reference collection: `Rengy.postman_collection 10.json`
 
 ## Current Status Summary
-- Live API integration in Admin UI: **Not implemented yet**
+- Live API integration in Admin UI: **Partially implemented (Admin Dashboard KPI cards)**
 - Mock/static data usage in Admin pages: **Still active**
 - Backend endpoint documentation: **Completed**
 
@@ -21,16 +21,25 @@ Reference collection: `Rengy.postman_collection 10.json`
 3. Refactored routing/app structure toward role-based URLs.
 4. Added role guards and route compatibility redirects.
 5. Stabilized Admin UI navigation/dropdown/logout behavior.
+6. Added reusable API client:
+   - `lib/api/client.ts`
+   - Supports base URL config, query params, JSON handling, and normalized API errors.
+7. Added Admin dashboard API service:
+   - `features/dashboard/api/admin-dashboard.ts`
+   - Calls `GET /dashboard/:id` (currently `32`)
+   - Includes safe fallback to existing UI data if API shape differs/fails.
+8. Wired `/admin/dashboard` to live API service:
+   - `app/admin/dashboard/page.tsx`
+   - Passes fetched KPI data into `AdminDashboardLegacy`.
 
 ## Not Started (API Integration)
-1. Central API client/service layer (fetch wrapper, base URL, common headers).
-2. Auth token storage + bearer token injection strategy for API calls.
-3. Typed request/response models for Admin modules.
-4. Replacing mock data with live API calls in Admin dashboard widgets.
-5. Replacing mock data with live API calls in Admin section pages.
-6. Error/loading/empty states tied to real API responses.
-7. API pagination/filter/sort mapping for tables.
-8. Mutation flows (create/update/delete) wired to backend.
+1. Auth token storage + bearer token injection strategy for API calls.
+2. Typed request/response models for Admin modules (contract-accurate, endpoint-specific).
+3. Replacing remaining mock data with live API calls in Admin dashboard widgets.
+4. Replacing mock data with live API calls in Admin section pages.
+5. Error/loading/empty states tied to real API responses.
+6. API pagination/filter/sort mapping for tables.
+7. Mutation flows (create/update/delete) wired to backend.
 
 ## Admin Modules To Integrate
 - Dashboard
@@ -83,7 +92,7 @@ Reference collection: `Rengy.postman_collection 10.json`
 3. A few APIs may differ from current UI field names and table schemas; mapping layer will be required.
 
 ## Next Action (Recommended)
-Start Phase 1 + Phase 2 immediately:
-1. create API client
-2. wire `/admin/dashboard` to live APIs
-3. keep fallback UI for missing fields
+Continue Phase 2 dashboard completion + start first table page:
+1. map full `/dashboard/:id` response fields to all admin widgets (beyond top KPI cards)
+2. integrate `/admin/approval-management` table and filters with live APIs
+3. finalize token handling strategy for protected endpoints

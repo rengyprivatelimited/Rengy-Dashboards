@@ -13,36 +13,20 @@ import {
   X,
 } from "lucide-react";
 import { RootSidebar } from "@/components/RootSidebar";
-import { mockData } from "@/lib/mock-data";
+import {
+  createRoleWithPermissions,
+  getMenuMap,
+  getTeamPermissionsForTeam,
+  updateRoleWithPermissions,
+  type CrudKey,
+  type MenuMap,
+  type ModulePermission,
+  type PermissionModule,
+  type PermissionRow,
+  type TeamTab,
+} from "@/features/admin/api/team-permissions";
 
-type TeamTab =
-  | "Sales Team"
-  | "Finance"
-  | "Design"
-  | "Loan Team"
-  | "Operation Team"
-  | "AMC Team"
-  | "Net Metering Team";
-
-type CrudKey = "create" | "read" | "update" | "delete";
 type RoleDrawerMode = "create" | "edit" | null;
-
-type ModulePermission = {
-  module: string;
-  create: boolean;
-  read: boolean;
-  update: boolean;
-  delete: boolean;
-};
-
-type PermissionRow = {
-  role: string;
-  modulePermissions: ModulePermission[];
-  users: string;
-  name: string;
-  dateCreated: string;
-  team: TeamTab;
-};
 
 const teamTabs: TeamTab[] = [
   "Sales Team",
@@ -50,11 +34,12 @@ const teamTabs: TeamTab[] = [
   "Design",
   "Loan Team",
   "Operation Team",
+  "Supply Chain Team",
   "AMC Team",
   "Net Metering Team",
 ];
 
-const permissionModules = ["Dashboard", "Teams & Leads", "Tickets and Alerts"] as const;
+const permissionModules: PermissionModule[] = ["Dashboard", "Teams & Leads", "Tickets and Alerts"];
 
 const createEmptyModulePermissions = (): ModulePermission[] =>
   permissionModules.map((module) => ({
@@ -65,22 +50,32 @@ const createEmptyModulePermissions = (): ModulePermission[] =>
     delete: false,
   }));
 
-const createSeedModulePermissions = (): ModulePermission[] =>
-  permissionModules.map((module) => ({
-    module,
-    create: true,
-    read: true,
-    update: true,
-    delete: true,
-  }));
+const initialPermissionRows: PermissionRow[] = [];
 
-const initialPermissionRows: PermissionRow[] = (mockData.teamPermissions.rows as Array<Omit<PermissionRow, "modulePermissions">>).map(
-  (row) => ({ ...row, modulePermissions: createSeedModulePermissions() }),
-);
+const formatToday = () => {
+  const date = new Date();
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}-${month}-${year}`;
+};
+
+function SkeletonRow() {
+  return (
+    <tr className="h-[80px] text-[12px]">
+      {Array.from({ length: 7 }).map((_, index) => (
+        <td key={index} className="border border-t-0 border-[#e4e7ec] px-2">
+          <div className="h-3.5 w-full animate-pulse rounded bg-[#e6eaf2]" />
+        </td>
+      ))}
+    </tr>
+  );
+}
 
 export default function TeamPermissionsPage() {
   const [activeTeamTab, setActiveTeamTab] = useState<TeamTab>("Sales Team");
   const [roles, setRoles] = useState<PermissionRow[]>(initialPermissionRows);
+  const [menuMap, setMenuMap] = useState<MenuMap | null>(null);
   const [actionRowIndex, setActionRowIndex] = useState<number | null>(null);
   const [drawerMode, setDrawerMode] = useState<RoleDrawerMode>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -88,6 +83,8 @@ export default function TeamPermissionsPage() {
   const [modulePermissions, setModulePermissions] = useState<ModulePermission[]>(
     createEmptyModulePermissions(),
   );
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
 
   const rows = useMemo(
@@ -103,6 +100,49 @@ export default function TeamPermissionsPage() {
     document.addEventListener("mousedown", closeMenu);
     return () => document.removeEventListener("mousedown", closeMenu);
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    getMenuMap()
+      .then((map) => {
+        if (!isMounted) return;
+        setMenuMap(map);
+      })
+      .catch((error) => {
+        console.error("Menus API failed. Using fallback data.", error);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!menuMap) return;
+    let isMounted = true;
+    setIsLoading(true);
+    getTeamPermissionsForTeam(activeTeamTab, menuMap)
+      .then((rowsForTeam) => {
+        if (!isMounted) return;
+        if (rowsForTeam.length > 0) {
+          setRoles((prev) => {
+            const filtered = prev.filter((row) => row.team !== activeTeamTab);
+            return [...rowsForTeam, ...filtered];
+          });
+        }
+      })
+      .catch((error) => {
+        console.error("Team roles API failed. Using fallback data.", error);
+      })
+      .finally(() => {
+        if (!isMounted) return;
+        setIsLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeTeamTab, menuMap]);
 
   const openEdit = (row: PermissionRow, index: number) => {
     setEditingIndex(index);
@@ -149,37 +189,72 @@ export default function TeamPermissionsPage() {
     );
   };
 
-  const saveRole = () => {
-    if (!roleName.trim()) return;
-    if (drawerMode === "edit" && editingIndex !== null) {
-      setRoles((prev) =>
-        prev.map((row, index) =>
-          index === editingIndex
-            ? {
-                ...row,
-                role: roleName.trim(),
-                modulePermissions: modulePermissions.map((permission) => ({ ...permission })),
-              }
-            : row,
-        ),
-      );
-    }
+  const saveRole = async () => {
+    const trimmedRole = roleName.trim();
+    if (!trimmedRole || isSaving) return;
 
-    if (drawerMode === "create") {
-      setRoles((prev) => [
-        {
-          role: roleName.trim(),
-          modulePermissions: modulePermissions.map((permission) => ({ ...permission })),
-          users: "sample@gmail.com",
-          name: "Atul",
-          dateCreated: "12-04-2025",
-          team: activeTeamTab,
-        },
-        ...prev,
-      ]);
-    }
+    const nextPermissions = modulePermissions.map((permission) => ({ ...permission }));
+    setIsSaving(true);
 
-    setDrawerMode(null);
+    try {
+      if (drawerMode === "edit" && editingIndex !== null) {
+        const target = roles[editingIndex];
+        setRoles((prev) =>
+          prev.map((row, index) =>
+            index === editingIndex
+              ? {
+                  ...row,
+                  role: trimmedRole,
+                  modulePermissions: nextPermissions,
+                }
+              : row,
+          ),
+        );
+
+        if (target?.id) {
+          await updateRoleWithPermissions(
+            {
+              roleId: target.id,
+              roleName: trimmedRole,
+              team: target.team,
+              modulePermissions: nextPermissions,
+            },
+            menuMap,
+          );
+        }
+      }
+
+      if (drawerMode === "create") {
+        let createdRow: PermissionRow | null = null;
+        try {
+          createdRow = await createRoleWithPermissions(
+            {
+              roleName: trimmedRole,
+              team: activeTeamTab,
+              modulePermissions: nextPermissions,
+            },
+            menuMap,
+          );
+        } catch (error) {
+          console.error("Create role API failed. Using fallback data.", error);
+        }
+
+        setRoles((prev) => [
+          createdRow ?? {
+            role: trimmedRole,
+            modulePermissions: nextPermissions,
+            users: "-",
+            name: "-",
+            dateCreated: formatToday(),
+            team: activeTeamTab,
+          },
+          ...prev,
+        ]);
+      }
+    } finally {
+      setIsSaving(false);
+      setDrawerMode(null);
+    }
   };
 
   const activeModuleTags = (permissions: ModulePermission[]) =>
@@ -273,66 +348,74 @@ export default function TeamPermissionsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.map((row, index) => (
-                        <tr key={`${row.role}-${index}`} className="h-[80px] text-[12px] text-[#111827] odd:bg-[#f9fbfc]">
-                          <td className="border border-t-0 border-[#e4e7ec] px-2">
-                            <input type="checkbox" className="h-4 w-4 rounded border-[#c5ccd8]" />
-                          </td>
-                          <td className="border border-t-0 border-[#e4e7ec] px-2">{row.role}</td>
-                          <td className="border border-t-0 border-[#e4e7ec] px-2">
-                            <div className="flex flex-wrap gap-1">
-                              {activeModuleTags(row.modulePermissions).map((moduleName, moduleIndex) => (
-                                <span
-                                  key={`${moduleName}-${moduleIndex}`}
-                                  className="rounded border border-[#c9d7ea] bg-[#edf4ff] px-1.5 py-0.5 text-[11px] text-[#2d4f79]"
-                                >
-                                  {moduleName}
-                                </span>
-                              ))}
-                            </div>
-                          </td>
-                          <td className="border border-t-0 border-[#e4e7ec] px-2">{row.users}</td>
-                          <td className="border border-t-0 border-[#e4e7ec] px-2">{row.name}</td>
-                          <td className="border border-t-0 border-[#e4e7ec] px-2 font-semibold">{row.dateCreated}</td>
-                          <td className="border border-t-0 border-[#e4e7ec] px-2">
-                            <div className="relative flex items-center justify-center">
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setActionRowIndex((prev) => (prev === index ? null : index));
-                                }}
-                                className="inline-flex h-6 w-6 items-center justify-center"
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </button>
-                              {actionRowIndex === index && (
-                                <div className="absolute right-0 top-7 z-30 w-[124px] overflow-hidden rounded-lg border border-[#d9dce3] bg-white shadow-md">
-                                  <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      openEdit(row, index);
-                                    }}
-                                    className="flex h-8 w-full items-center gap-2 px-3 text-left text-xs text-[#4b5563] hover:bg-[#f8fafc]"
-                                  >
-                                    <Pencil className="h-3.5 w-3.5" />
-                                    Edit
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={(event) => event.stopPropagation()}
-                                    className="flex h-8 w-full items-center gap-2 px-3 text-left text-xs text-[#ef4444] hover:bg-[#fff5f5]"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                    Delete
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                      {isLoading && rows.length === 0
+                        ? Array.from({ length: 6 }).map((_, index) => <SkeletonRow key={`skeleton-${index}`} />)
+                        : rows.map((row, index) => {
+                            const rowIndex = roles.indexOf(row);
+                            const actionIndex = rowIndex === -1 ? index : rowIndex;
+                            return (
+                              <tr key={`${row.role}-${actionIndex}`} className="h-[80px] text-[12px] text-[#111827] odd:bg-[#f9fbfc]">
+                                <td className="border border-t-0 border-[#e4e7ec] px-2">
+                                  <input type="checkbox" className="h-4 w-4 rounded border-[#c5ccd8]" />
+                                </td>
+                                <td className="border border-t-0 border-[#e4e7ec] px-2">{row.role}</td>
+                                <td className="border border-t-0 border-[#e4e7ec] px-2">
+                                  <div className="flex flex-wrap gap-1">
+                                    {activeModuleTags(row.modulePermissions).map((moduleName, moduleIndex) => (
+                                      <span
+                                        key={`${moduleName}-${moduleIndex}`}
+                                        className="rounded border border-[#c9d7ea] bg-[#edf4ff] px-1.5 py-0.5 text-[11px] text-[#2d4f79]"
+                                      >
+                                        {moduleName}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </td>
+                                <td className="border border-t-0 border-[#e4e7ec] px-2">{row.users}</td>
+                                <td className="border border-t-0 border-[#e4e7ec] px-2">{row.name}</td>
+                                <td className="border border-t-0 border-[#e4e7ec] px-2 font-semibold">{row.dateCreated}</td>
+                                <td className="border border-t-0 border-[#e4e7ec] px-2">
+                                  <div className="relative flex items-center justify-center">
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        setActionRowIndex((prev) => (prev === actionIndex ? null : actionIndex));
+                                      }}
+                                      className="inline-flex h-6 w-6 items-center justify-center"
+                                    >
+                                      <MoreVertical className="h-4 w-4" />
+                                    </button>
+                                    {actionRowIndex === actionIndex && (
+                                      <div className="absolute right-0 top-7 z-30 w-[124px] overflow-hidden rounded-lg border border-[#d9dce3] bg-white shadow-md">
+                                        <button
+                                          type="button"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            if (actionIndex >= 0) {
+                                              openEdit(row, actionIndex);
+                                            }
+                                          }}
+                                          className="flex h-8 w-full items-center gap-2 px-3 text-left text-xs text-[#4b5563] hover:bg-[#f8fafc]"
+                                        >
+                                          <Pencil className="h-3.5 w-3.5" />
+                                          Edit
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={(event) => event.stopPropagation()}
+                                          className="flex h-8 w-full items-center gap-2 px-3 text-left text-xs text-[#ef4444] hover:bg-[#fff5f5]"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                          Delete
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
                     </tbody>
                   </table>
                 </div>
@@ -486,9 +569,10 @@ export default function TeamPermissionsPage() {
             <button
               type="button"
               onClick={saveRole}
+              disabled={isSaving}
               className="h-10 rounded bg-[#131740] text-sm font-semibold text-white"
             >
-              Save
+              {isSaving ? "Saving..." : "Save"}
             </button>
           </div>
         </aside>

@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { RootSidebar } from "@/components/RootSidebar";
 import { mockData } from "@/lib/mock-data";
+import { getTeamUsers } from "@/features/admin/api/team-management";
 
 type TeamTab =
   | "Sales Team"
@@ -27,7 +28,8 @@ type TeamTab =
   | "Loan Team"
   | "Operation Team"
   | "AMC Team"
-  | "Net Metering Team";
+  | "Net Metering Team"
+  | "Supply Chain Team";
 
 type UserRow = {
   employeeId: string;
@@ -46,20 +48,28 @@ type UserForm = {
   email: string;
   phone: string;
   team: string;
-  role: string;
+  role: any;
   joiningDate: string;
 };
 
-const teamTabs: TeamTab[] = mockData.teamManagement.teamTabs as TeamTab[];
+const teamTabs: TeamTab[] = (() => {
+  const base = mockData.teamManagement.teamTabs as TeamTab[];
+  if (base.includes("Supply Chain Team")) return base;
+  return [...base, "Supply Chain Team"];
+})();
 
-const users: UserRow[] = mockData.teamManagement.users as UserRow[];
+const fallbackUsers: UserRow[] = mockData.teamManagement.users as UserRow[];
 
 function emptyForm(): UserForm {
-  return { name: "", email: "", phone: "", team: "Sales Team", role: "Athul", joiningDate: "12-12-2025" };
+  return { name: "", email: "", phone: "", team: "Sales Team", role: {name: "Manager"}, joiningDate: "12-12-2025" };
 }
 
 function filledFormFromUser(user: UserRow): UserForm {
-  return { name: user.name, email: user.email, phone: user.phone, team: user.team, role: "Athul", joiningDate: "12-12-2025" };
+  return { name: user.name, email: user.email, phone: user.phone, team: user.team, role: {name: "Manager"}, joiningDate: "12-12-2025" };
+}
+
+function SkeletonBlock({ className }: { className: string }) {
+  return <div className={`animate-pulse rounded bg-[#e6eaf2] ${className}`} />;
 }
 
 function TeamManagementPageComponent() {
@@ -71,6 +81,8 @@ function TeamManagementPageComponent() {
   const [targetRevenue, setTargetRevenue] = useState("100000");
   const [targetDuration, setTargetDuration] = useState("Custom");
   const [targetCustomDate, setTargetCustomDate] = useState("12-12-2025");
+  const [usersByTeam, setUsersByTeam] = useState<Record<string, UserRow[]>>({});
+  const [isLoading, setIsLoading] = useState(false);
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -82,7 +94,54 @@ function TeamManagementPageComponent() {
     return () => document.removeEventListener("mousedown", close);
   }, []);
 
-  const rows = useMemo(() => users.filter((row) => row.team === activeTeamTab), [activeTeamTab]);
+  useEffect(() => {
+    const teamTypeMap: Partial<Record<TeamTab, number>> = {
+      "Sales Team": 4,
+      "Loan Team": 5,
+      Finance: 6,
+      Design: 7,
+      "Operation Team": 8,
+      "Supply Chain Team": 9,
+      "Net Metering Team": 10,
+      "AMC Team": 11,
+    };
+
+    const type = teamTypeMap[activeTeamTab];
+    if (!type) return;
+
+    let isMounted = true;
+
+    setIsLoading(true);
+    getTeamUsers({ type })
+      .then((result) => {
+        if (!isMounted) return;
+        setUsersByTeam((prev) => ({
+          ...prev,
+          [activeTeamTab]: result.users.map((row) => ({
+            ...row,
+            team: activeTeamTab,
+          })),
+        }));
+      })
+      .catch((error) => {
+        console.error("Team users API failed. Using fallback data.", error);
+      })
+      .finally(() => {
+        if (!isMounted) return;
+        setIsLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeTeamTab]);
+
+  const rows = useMemo(() => {
+    const apiRows = usersByTeam[activeTeamTab];
+    if (apiRows && apiRows.length > 0) return apiRows;
+    if (isLoading) return [];
+    return fallbackUsers.filter((row) => row.team === activeTeamTab);
+  }, [activeTeamTab, usersByTeam, isLoading]);
 
   const openView = (row: UserRow) => {
     setSelectedUser(row);
@@ -174,34 +233,44 @@ function TeamManagementPageComponent() {
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.map((row, index) => (
-                        <tr key={`${row.employeeId}-${index}`} onClick={() => openView(row)} className="h-[52px] cursor-pointer text-[12px] text-[#111827] odd:bg-[#f9fbfc] hover:bg-[#f8fbff]">
-                          <td className="border border-t-0 border-[#e4e7ec] px-2"><input type="checkbox" onClick={(event) => event.stopPropagation()} className="h-4 w-4 rounded border-[#c5ccd8]" /></td>
-                          <td className="border border-t-0 border-[#e4e7ec] px-2">{row.employeeId}</td>
-                          <td className="border border-t-0 border-[#e4e7ec] px-2">{row.name}</td>
-                          <td className="border border-t-0 border-[#e4e7ec] px-2">{row.email}</td>
-                          <td className="border border-t-0 border-[#e4e7ec] px-2">{row.phone}</td>
-                          <td className="border border-t-0 border-[#e4e7ec] px-2 font-medium">{row.role}</td>
-                          <td className="border border-t-0 border-[#e4e7ec] px-2 font-semibold">{row.dateCreated}</td>
-                          <td className="border border-t-0 border-[#e4e7ec] px-2">
-                            <div className="relative flex items-center justify-end gap-1.5" ref={actionMenuRef}>
-                              <button type="button" onClick={(event) => event.stopPropagation()} className="inline-flex h-6 w-6 items-center justify-center text-[#9aa2b1]">
-                                <MessageSquare className="h-3.5 w-3.5" />
-                              </button>
-                              <button type="button" onClick={(event) => { event.stopPropagation(); setActionRowIndex((prev) => (prev === index ? null : index)); }} className="inline-flex h-6 w-6 items-center justify-center">
-                                <MoreVertical className="h-4 w-4" />
-                              </button>
-                              {actionRowIndex === index && (
-                                <div className="absolute right-0 top-7 z-30 w-[124px] overflow-hidden rounded-lg border border-[#d9dce3] bg-white shadow-md">
-                                  <button type="button" onClick={(event) => { event.stopPropagation(); openEdit(row); }} className="flex h-8 w-full items-center px-3 text-left text-xs text-[#4b5563] hover:bg-[#f8fafc]">Edit</button>
-                                  <button type="button" onClick={(event) => { event.stopPropagation(); openView(row); setActionRowIndex(null); }} className="flex h-8 w-full items-center px-3 text-left text-xs text-[#4b5563] hover:bg-[#f8fafc]">View</button>
-                                  <button type="button" onClick={(event) => event.stopPropagation()} className="flex h-8 w-full items-center px-3 text-left text-xs text-[#ef4444] hover:bg-[#fff5f5]">Delete</button>
+                      {isLoading
+                        ? Array.from({ length: 6 }).map((_, index) => (
+                            <tr key={`skeleton-${index}`} className="h-[52px] text-[12px]">
+                              {Array.from({ length: 8 }).map((__, cellIndex) => (
+                                <td key={cellIndex} className="border border-t-0 border-[#e4e7ec] px-2">
+                                  <SkeletonBlock className="h-4 w-full" />
+                                </td>
+                              ))}
+                            </tr>
+                          ))
+                        : rows.map((row, index) => (
+                            <tr key={`${row.employeeId}-${index}`} onClick={() => openView(row)} className="h-[52px] cursor-pointer text-[12px] text-[#111827] odd:bg-[#f9fbfc] hover:bg-[#f8fbff]">
+                              <td className="border border-t-0 border-[#e4e7ec] px-2"><input type="checkbox" onClick={(event) => event.stopPropagation()} className="h-4 w-4 rounded border-[#c5ccd8]" /></td>
+                              <td className="border border-t-0 border-[#e4e7ec] px-2">{row.employeeId}</td>
+                              <td className="border border-t-0 border-[#e4e7ec] px-2">{row.name}</td>
+                              <td className="border border-t-0 border-[#e4e7ec] px-2">{row.email}</td>
+                              <td className="border border-t-0 border-[#e4e7ec] px-2">{row.phone}</td>
+                              <td className="border border-t-0 border-[#e4e7ec] px-2 font-medium">{ row.role.name}</td>
+                              <td className="border border-t-0 border-[#e4e7ec] px-2 font-semibold">{row.dateCreated}</td>
+                              <td className="border border-t-0 border-[#e4e7ec] px-2">
+                                <div className="relative flex items-center justify-end gap-1.5" ref={actionMenuRef}>
+                                  <button type="button" onClick={(event) => event.stopPropagation()} className="inline-flex h-6 w-6 items-center justify-center text-[#9aa2b1]">
+                                    <MessageSquare className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button type="button" onClick={(event) => { event.stopPropagation(); setActionRowIndex((prev) => (prev === index ? null : index)); }} className="inline-flex h-6 w-6 items-center justify-center">
+                                    <MoreVertical className="h-4 w-4" />
+                                  </button>
+                                  {actionRowIndex === index && (
+                                    <div className="absolute right-0 top-7 z-30 w-[124px] overflow-hidden rounded-lg border border-[#d9dce3] bg-white shadow-md">
+                                      <button type="button" onClick={(event) => { event.stopPropagation(); openEdit(row); }} className="flex h-8 w-full items-center px-3 text-left text-xs text-[#4b5563] hover:bg-[#f8fafc]">Edit</button>
+                                      <button type="button" onClick={(event) => { event.stopPropagation(); openView(row); setActionRowIndex(null); }} className="flex h-8 w-full items-center px-3 text-left text-xs text-[#4b5563] hover:bg-[#f8fafc]">View</button>
+                                      <button type="button" onClick={(event) => event.stopPropagation()} className="flex h-8 w-full items-center px-3 text-left text-xs text-[#ef4444] hover:bg-[#fff5f5]">Delete</button>
+                                    </div>
+                                  )}
                                 </div>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                              </td>
+                            </tr>
+                          ))}
                     </tbody>
                   </table>
                 </div>

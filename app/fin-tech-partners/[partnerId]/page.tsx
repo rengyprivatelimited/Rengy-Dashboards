@@ -1,26 +1,70 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Bell, ChevronDown, Mail, MapPin, Pencil, Search, UserRound, ArrowLeft } from "lucide-react";
 import { RootSidebar } from "@/components/RootSidebar";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { getFinTechPartner, type FinTechPartnerDetail } from "@/features/admin/api/fintech-partners";
 
 type Tab = "overview" | "account" | "chat";
 
-function DetailStat({ label, value }: { label: string; value: string }) {
+function SkeletonLine({ className }: { className?: string }) {
+  return <div className={`h-3 rounded-full bg-[#e3e7ee] ${className ?? ""}`} />;
+}
+
+function DetailStat({ label, value, isLoading }: { label: string; value: string; isLoading?: boolean }) {
   return (
     <div>
       <div className="text-[13px] text-[#8b93a2]">
         {label} <span className="text-[#c7ccd6]">.</span>
       </div>
-      <div className="mt-1 text-[16px] font-semibold leading-none text-[#202738]">{value}</div>
+      <div className="mt-1 text-[16px] font-semibold leading-none text-[#202738]">
+        {isLoading ? <div className="h-4 w-32 rounded bg-[#e3e7ee]" /> : value}
+      </div>
     </div>
   );
 }
 
 export default function FinTechPartnerDetailPage() {
   const router = useRouter();
+  const params = useParams<{ partnerId: string }>();
   const [tab, setTab] = useState<Tab>("overview");
+  const [partner, setPartner] = useState<FinTechPartnerDetail | null>(null);
+
+  const partnerId = useMemo(() => {
+    const raw = params?.partnerId ?? "";
+    const digits = raw.replace(/[^\d]/g, "");
+    const parsed = Number(digits);
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [params]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadPartner = async () => {
+      if (!partnerId) return;
+      try {
+        const result = await getFinTechPartner(partnerId);
+        if (!isActive) return;
+        setPartner(result);
+      } catch (error) {
+        console.error("Failed to load fin-tech partner", error);
+      }
+    };
+
+    loadPartner();
+    return () => {
+      isActive = false;
+    };
+  }, [partnerId]);
+
+  const isLoading = !partner;
+  const partnerName = partner?.name ?? "";
+  const partnerLocation = partner?.location ?? "";
+  const partnerPoc = partner?.poc ?? "";
+  const partnerEmail = partner?.email ?? "";
+  const partnerPhone = partner?.phone ?? "";
+  const partnerLogoText = partner?.name ? partner.name.slice(0, 4).toLowerCase() : "";
 
   return (
     <div className="min-h-screen bg-[#eceef2] text-[#171b24]">
@@ -48,7 +92,9 @@ export default function FinTechPartnerDetailPage() {
             <div className="flex items-center justify-between">
               <button className="flex items-center gap-3" onClick={() => router.push("/fin-tech-partners")}>
                 <ArrowLeft className="h-4 w-4 text-[#1f2532]" />
-                <h1 className="text-[16px] font-semibold leading-none text-[#1f2532]">ICICI Bank</h1>
+                <h1 className="text-[16px] font-semibold leading-none text-[#1f2532]">
+                  {isLoading ? <span className="inline-block h-4 w-28 rounded bg-[#e3e7ee]" /> : partnerName}
+                </h1>
               </button>
               <button className="inline-flex h-9 items-center gap-1 rounded-full border border-[#cfd6e3] bg-white px-4 text-[13px] text-[#5b6474]">
                 Export
@@ -82,34 +128,52 @@ export default function FinTechPartnerDetailPage() {
                 <div className="relative rounded-2xl border border-[#e3e7ee] bg-white p-5">
                   <div className="h-[170px] rounded-xl bg-gradient-to-r from-[#986f39] via-[#5588b2] to-[#d4dae4]" />
                   <div className="-mt-8 ml-6 h-[78px] w-[78px] rounded-2xl border border-[#d8dcef] bg-[#f1ecff] p-2 shadow-sm">
-                    <div className="flex h-full w-full items-center justify-center rounded-full bg-[#1b1e5a] text-[22px] font-semibold text-[#4ad5cb]">
-                      ecofy
+                    <div className="flex h-full w-full items-center justify-center rounded-full bg-[#1b1e5a] text-[18px] font-semibold uppercase text-[#4ad5cb]">
+                      {isLoading ? <span className="h-4 w-10 rounded bg-[#2b2f7a]" /> : partnerLogoText}
                     </div>
                   </div>
 
                   <div className="mt-5 flex items-start justify-between gap-4">
-                    <div>
+                    <div className="min-w-[220px]">
                       <div className="flex items-center gap-2">
-                        <h2 className="text-[32px] font-semibold leading-none text-[#222938]">ICICI Bank</h2>
+                        {isLoading ? (
+                          <div className="h-8 w-56 rounded bg-[#e3e7ee]" />
+                        ) : (
+                          <h2 className="text-[32px] font-semibold leading-none text-[#222938]">{partnerName}</h2>
+                        )}
                         <Pencil className="h-4 w-4 text-[#6e7584]" />
                       </div>
-                      <div className="mt-3 text-[13px] text-[#7e8696]">Bank ID: B-0029 <span className="mx-2 text-[#c6cbd5]">.</span></div>
+                      <div className="mt-3 text-[13px] text-[#7e8696]">
+                        {isLoading ? (
+                          <SkeletonLine className="h-3 w-40" />
+                        ) : (
+                          <>
+                            Bank ID: {partner?.bankId ?? "-"} <span className="mx-2 text-[#c6cbd5]">.</span>
+                          </>
+                        )}
+                      </div>
                       <div className="mt-3 flex items-center gap-2 text-[13px] font-medium text-[#5a6273]">
                         <MapPin className="h-5 w-5" />
-                        Bangalore, Karnataka
+                        {isLoading ? <SkeletonLine className="h-3 w-36" /> : partnerLocation || "-"}
                       </div>
-                      <div className="mt-3 text-[13px] text-[#8b93a2]">Onboarded On: 12 May 2025</div>
+                      <div className="mt-3 text-[13px] text-[#8b93a2]">
+                        {isLoading ? <SkeletonLine className="h-3 w-44" /> : `Onboarded On: ${partner?.onboardedOn ?? "-"}`}
+                      </div>
                     </div>
 
                     <div className="pt-1">
                       <div className="text-[13px] text-[#8a92a0]">POC :</div>
                       <div className="mt-3 flex items-center gap-2 text-[13px] font-medium text-[#2a3140]">
                         <div className="h-7 w-7 rounded-full bg-[#d8b08f]" />
-                        Rajesh Sharma
+                        {isLoading ? <SkeletonLine className="h-3 w-28" /> : partnerPoc || "-"}
                       </div>
                       <div className="mt-3 flex items-center gap-2 text-[13px] font-medium text-[#2a3140]">
                         <Mail className="h-4 w-4" />
-                        rajesh@suntechinstall.in
+                        {isLoading ? <SkeletonLine className="h-3 w-40" /> : partnerEmail || "-"}
+                      </div>
+                      <div className="mt-3 flex items-center gap-2 text-[13px] font-medium text-[#2a3140]">
+                        <UserRound className="h-4 w-4" />
+                        {isLoading ? <SkeletonLine className="h-3 w-24" /> : partnerPhone || "-"}
                       </div>
                     </div>
                   </div>
@@ -119,42 +183,47 @@ export default function FinTechPartnerDetailPage() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-[#e3e7ee] bg-white p-6">
+                <div className={`rounded-2xl border border-[#e3e7ee] bg-white p-6 ${isLoading ? "animate-pulse" : ""}`}>
                   <div className="mb-6 flex items-center gap-4">
                     <div className="rounded-xl bg-[#edeafd] p-3 text-[#1f243b]"><UserRound className="h-5 w-5" /></div>
                     <h3 className="text-[16px] font-semibold leading-none text-[#1f2533]">Business Details</h3>
                     <Pencil className="h-4 w-4 text-[#6e7584]" />
                   </div>
                   <div className="grid grid-cols-1 gap-x-20 gap-y-10 md:grid-cols-2">
-                    <DetailStat label="Email Address" value="info@abcpvtltd.com" />
-                    <DetailStat label="Phone" value="+9198765 43210" />
-                    <DetailStat label="Company Address" value="3rd pahae, HSR layout, Bangalore, Karnataka" />
-                    <DetailStat label="GST Number" value="384646384" />
+                    <DetailStat label="Email Address" value={partnerEmail || "-"} isLoading={isLoading} />
+                    <DetailStat label="Phone" value={partnerPhone || "-"} isLoading={isLoading} />
+                    <DetailStat label="Company Address" value={partner?.address ?? "-"} isLoading={isLoading} />
+                    <DetailStat label="GST Number" value={partner?.gstNumber ?? "-"} isLoading={isLoading} />
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-[#e3e7ee] bg-white p-6">
+                <div className={`rounded-2xl border border-[#e3e7ee] bg-white p-6 ${isLoading ? "animate-pulse" : ""}`}>
                   <div className="mb-6 flex items-center gap-4">
                     <div className="rounded-xl bg-[#edeafd] p-3 text-[#1f243b]"><UserRound className="h-5 w-5" /></div>
                     <h3 className="text-[16px] font-semibold leading-none text-[#1f2533]">Performance Overview</h3>
                     <Pencil className="h-4 w-4 text-[#6e7584]" />
                   </div>
                   <div className="grid grid-cols-1 gap-x-20 gap-y-10 md:grid-cols-2">
-                    <DetailStat label="Approval Time" value="15 Days" />
-                    <DetailStat label="Resubmissions Needed" value="4" />
-                    <DetailStat label="Average Disbursal Time" value="6" />
-                    <DetailStat label="Average Disbursal Percentage" value="40%" />
-                    <DetailStat label="Total No. of Rejections" value="12" />
-                    <DetailStat label="Rejection Percentage" value="8%" />
+                    <DetailStat label="Approval Rate" value={partner?.approvalRate ?? "-"} isLoading={isLoading} />
+                    <DetailStat label="Resubmissions Needed" value={partner?.resub ?? "-"} isLoading={isLoading} />
+                    <DetailStat label="Average Disbursal Time" value={partner?.avg ?? "-"} isLoading={isLoading} />
+                    <DetailStat label="Total Loans" value={partner?.loans ?? "-"} isLoading={isLoading} />
+                    <DetailStat label="Total No. of Rejections" value={partner?.rejectedLoans ?? "-"} isLoading={isLoading} />
+                    <DetailStat label="Rejection Percentage" value={partner?.rejectedRate ?? "-"} isLoading={isLoading} />
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-[#e3e7ee] bg-white p-6">
+                <div className={`rounded-2xl border border-[#e3e7ee] bg-white p-6 ${isLoading ? "animate-pulse" : ""}`}>
                   <div className="mb-4 flex items-center gap-4">
                     <div className="rounded-xl bg-[#edeafd] p-3 text-[#1f243b]"><UserRound className="h-5 w-5" /></div>
                     <h3 className="text-[16px] font-semibold leading-none text-[#1f2533]">Remarks</h3>
                   </div>
-                  <textarea rows={6} placeholder="Type Remarks" className="w-full rounded-xl border border-[#d6dbe5] p-3 text-sm outline-none" />
+                  <textarea
+                    rows={6}
+                    placeholder="Type Remarks"
+                    defaultValue={partner?.remarks ?? ""}
+                    className="w-full rounded-xl border border-[#d6dbe5] p-3 text-sm outline-none"
+                  />
                 </div>
               </>
             ) : null}

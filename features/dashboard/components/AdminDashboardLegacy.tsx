@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { RootSidebar } from "@/components/RootSidebar";
 import {
   Bell,
@@ -10,6 +11,8 @@ import {
   Download,
   Search,
 } from "lucide-react";
+import { AdminDashboardStat } from "@/features/dashboard/api/admin-dashboard";
+import { getAdminDashboardDataWithToken } from "@/features/dashboard/api/admin-dashboard";
 
 const teams = [
   { name: "Sales Team", open: 12, new: 12, pending: 12 },
@@ -96,7 +99,61 @@ function SideAction({ title }: { title: string }) {
   );
 }
 
-export function AdminDashboardLegacy() {
+type AdminDashboardLegacyProps = {
+  stats?: AdminDashboardStat[];
+};
+
+export function AdminDashboardLegacy({ stats }: AdminDashboardLegacyProps) {
+  const fallbackCards: AdminDashboardStat[] = [
+    {
+      value: "INR 3.8 Cr",
+      title: "Total Revenue Impact",
+      note: "+6% growth points vs last year",
+    },
+    {
+      value: "1202",
+      title: "Active Projects",
+      note: "+8% higher than last month",
+    },
+    {
+      value: "40%",
+      title: "Overall SLA Compliance",
+      note: "+4 percent above/under performance",
+    },
+    {
+      value: "INR 62 Lakh",
+      title: "Pending Collections",
+      note: "+4 percent achievement in overdue invoices",
+    },
+  ];
+
+  const [statCards, setStatCards] = useState<AdminDashboardStat[]>(
+    stats && stats.length >= 4 ? stats.slice(0, 4) : fallbackCards,
+  );
+
+  useEffect(() => {
+    const parseCookie = (name: string) => {
+      const escaped = name.replace(/[-[\]/{}()*+?.\\^$|]/g, "\\$&");
+      const match = document.cookie.match(new RegExp(`(?:^|; )${escaped}=([^;]*)`));
+      return match ? decodeURIComponent(match[1]) : "";
+    };
+
+    const accessToken = parseCookie("rengy_access_token");
+    if (!accessToken) return;
+
+    let isMounted = true;
+    getAdminDashboardDataWithToken(accessToken, 32).then((result) => {
+      if (!isMounted) return;
+      if (result.stats.length >= 4) {
+        setStatCards(result.stats.slice(0, 4));
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#eceef2] text-[#171b24]">
       <div className="flex">
@@ -123,26 +180,9 @@ export function AdminDashboardLegacy() {
               <h1 className="text-4xl font-medium leading-none text-[#1d2028] lg:text-5xl">Hi Akhil</h1>
 
               <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <StatCard
-                  value="INR 3.8 Cr"
-                  title="Total Revenue Impact"
-                  note="+6% growth points vs last year"
-                />
-                <StatCard
-                  value="1202"
-                  title="Active Projects"
-                  note="+8% higher than last month"
-                />
-                <StatCard
-                  value="40%"
-                  title="Overall SLA Compliance"
-                  note="+4 percent above/under performance"
-                />
-                <StatCard
-                  value="INR 62 Lakh"
-                  title="Pending Collections"
-                  note="+4 percent achievement in overdue invoices"
-                />
+                {statCards.map((card) => (
+                  <StatCard key={card.title} value={card.value} title={card.title} note={card.note} />
+                ))}
               </div>
 
               <div className="mt-4 rounded-md border border-[#d7dde7] bg-white p-3">

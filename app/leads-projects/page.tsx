@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { RootSidebar } from "@/components/RootSidebar";
 import { mockData } from "@/lib/mock-data";
+import { getLeadsProjectsData } from "@/features/admin/api/leads-projects";
 
 type ProjectRow = {
   id: string;
@@ -36,6 +37,7 @@ type ProjectRow = {
   paymentType: string;
   paymentStatus: string;
   assignedTo: string;
+  statusRaw?: string;
 };
 
 type LeadRow = {
@@ -48,6 +50,8 @@ type LeadRow = {
   amountPaid: string;
   dueAmount: string;
   assignedTo: string;
+  statusRaw?: string;
+  createdAt?: string;
 };
 
 type DetailContext =
@@ -119,8 +123,8 @@ type PaymentFilterParent = "Vendor" | "Payment Type" | "Milestone" | "Customer" 
 type RemarksSortParent = "Team" | "Date Range";
 type FloatingPosition = { top: number; left: number };
 
-const initialProjects: ProjectRow[] = mockData.leadsProjects.projects as ProjectRow[];
-const initialLeads: LeadRow[] = mockData.leadsProjects.leads as LeadRow[];
+const fallbackProjects: ProjectRow[] = mockData.leadsProjects.projects as ProjectRow[];
+const fallbackLeads: LeadRow[] = mockData.leadsProjects.leads as LeadRow[];
 
 const milestoneTabs = [
   "Lead Added",
@@ -505,6 +509,41 @@ function paymentClass(status: string) {
   return "bg-[#ffe8e8] text-[#ef4444]";
 }
 
+function parseLooseDate(value: string | undefined): Date | null {
+  if (!value) return null;
+  const raw = value.trim();
+  if (!raw) return null;
+
+  if (raw.includes(",")) {
+    const [datePart, timePart] = raw.split(",");
+    const [day, month, year] = datePart.trim().split("-").map(Number);
+    if (!day || !month || !year) return null;
+    const [hour, minute, second] = timePart.trim().split(":").map(Number);
+    return new Date(year, month - 1, day, hour || 0, minute || 0, second || 0);
+  }
+
+  if (raw.includes("-")) {
+    const [day, month, year] = raw.split("-").map(Number);
+    if (!day || !month || !year) {
+      const parsed = new Date(raw);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+    return new Date(year, month - 1, day);
+  }
+
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function normalizeStatus(value: string | undefined): string {
+  return (value ?? "").toLowerCase();
+}
+
+function hasAny(status: string | undefined, keywords: string[]): boolean {
+  const text = normalizeStatus(status);
+  return keywords.some((keyword) => text.includes(keyword));
+}
+
 function defaultForm(leadId: string): LeadFormData {
   return { leadId, leadSource: "Google Ads", type: "Residency", expectedInstallationDate: "", name: "", address: "", vendor: "Rohith", assignedTo: "Rohith", phone: "", email: "sample@gmail.com", state: "Kerala", district: "Thrissur" };
 }
@@ -527,8 +566,10 @@ function defaultProjectDetailEditForm(customerName: string): ProjectDetailEditFo
 
 export default function LeadsProjectsPage() {
   const [activeTopTab, setActiveTopTab] = useState<"Projects" | "Leads">("Projects");
-  const [projects, setProjects] = useState<ProjectRow[]>(initialProjects);
-  const [leads, setLeads] = useState<LeadRow[]>(initialLeads);
+  const [projects, setProjects] = useState<ProjectRow[]>(fallbackProjects);
+  const [leads, setLeads] = useState<LeadRow[]>(fallbackLeads);
+  const [searchInput, setSearchInput] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
   const [drawerMode, setDrawerMode] = useState<DrawerMode>("view");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
@@ -562,6 +603,79 @@ export default function LeadsProjectsPage() {
   const [remarksTeamPos, setRemarksTeamPos] = useState<FloatingPosition>({ top: 0, left: 0 });
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const projectStats = useMemo(() => {
+    const total = projects.length;
+    const completed = projects.filter((row) =>
+      hasAny(row.statusRaw ?? row.stage, ["complete", "completed", "installed", "delivered"]),
+    ).length;
+    const delayed = projects.filter((row) => hasAny(row.statusRaw ?? row.stage, ["delay", "delayed", "overdue", "late"])).length;
+    const onTime = projects.filter((row) => hasAny(row.statusRaw ?? row.stage, ["on time", "ontime"])).length;
+    const healthBase = total > 0 ? total : 1;
+    const healthPercent = Math.round(((healthBase - delayed) / healthBase) * 100);
+
+    return {
+      total,
+      completed,
+      delayed,
+      healthPercent,
+      onTime,
+    };
+  }, [projects]);
+
+  const leadStats = useMemo(() => {
+    const total = leads.length;
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    const newThisMonth = leads.filter((row) => {
+      const date = parseLooseDate(row.createdAt);
+      if (!date) return false;
+      return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+    }).length;
+
+    const converted = leads.filter((row) =>
+      hasAny(row.statusRaw ?? row.milestone, ["converted", "won", "approved", "project"]),
+    ).length;
+    const lost = leads.filter((row) =>
+      hasAny(row.statusRaw ?? row.milestone, ["lost", "rejected", "declined", "closed"]),
+    ).length;
+    const conversionRate = total > 0 ? Math.round((converted / total) * 100) : 0;
+
+    return {
+      total,
+      newThisMonth,
+      conversionRate,
+      lost,
+    };
+  }, [leads]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    getLeadsProjectsData({ search: searchTerm })
+      .then((result) => {
+        if (!isMounted) return;
+        setProjects(result.projects);
+        setLeads(result.leads);
+      })
+      .catch((error) => {
+        console.error("Leads & projects API failed. Using fallback data.", error);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [searchTerm]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setSearchTerm(searchInput.trim());
+    }, 350);
+
+    return () => clearTimeout(timeout);
+  }, [searchInput]);
 
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
@@ -1260,23 +1374,31 @@ export default function LeadsProjectsPage() {
                 <section className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-4">
                   {activeTopTab === "Projects" ? (
                     <>
-                      <StatCard value="132" title="Total Projects" note="+12% Higher than last month" />
-                      <StatCard value="132" title="Lifetime Completed Projects" note="+12% Higher than last month" />
-                      <StatCard value="120" title="Delayed Projects" note="12% Lower than last month" />
-                      <StatCard value="87%" title="Project Delivery Health" note="2% On-Time Delivery   2% Over Due" />
+                      <StatCard value={String(projectStats.total)} title="Total Projects" note="From live project list" />
+                      <StatCard value={String(projectStats.completed)} title="Lifetime Completed Projects" note="Derived from project status" />
+                      <StatCard value={String(projectStats.delayed)} title="Delayed Projects" note="Delayed/overdue statuses" />
+                      <StatCard value={`${projectStats.healthPercent}%`} title="Project Delivery Health" note="On-time vs delayed" />
                     </>
                   ) : (
                     <>
-                      <StatCard value="132" title="Leads(Lifetime)" note="+12% Higher than last month" />
-                      <StatCard value="20" title="New leads this Month" note="+22% Higher than last month" />
-                      <StatCard value="87%" title="Conversion rate" note="Improved by 12%" />
-                      <StatCard value="20" title="Overall Lead Lost" note="+10% Higher than this month" danger />
+                      <StatCard value={String(leadStats.total)} title="Leads(Lifetime)" note="From live lead list" />
+                      <StatCard value={String(leadStats.newThisMonth)} title="New leads this Month" note="Based on lead created date" />
+                      <StatCard value={`${leadStats.conversionRate}%`} title="Conversion rate" note="Converted vs total leads" />
+                      <StatCard value={String(leadStats.lost)} title="Overall Lead Lost" note="Lost/declined leads" danger />
                     </>
                   )}
                 </section>
                 <section className="mt-4 rounded-md border border-[#d8dde5] bg-white">
                   <div className="flex items-center justify-between gap-2 border-b border-[#e4e7ec] p-3">
-                    <div className="flex h-9 w-[260px] items-center gap-2 rounded border border-[#d8dde5] px-3 text-[12px] text-[#9aa2b1]"><Search className="h-4 w-4" />Search</div>
+                  <div className="flex h-9 w-[260px] items-center gap-2 rounded border border-[#d8dde5] px-3 text-[12px] text-[#9aa2b1]">
+                    <Search className="h-4 w-4" />
+                    <input
+                      value={searchInput}
+                      onChange={(event) => setSearchInput(event.target.value)}
+                      placeholder="Search"
+                      className="h-full w-full bg-transparent text-[12px] text-[#111827] outline-none placeholder:text-[#9aa2b1]"
+                    />
+                  </div>
                     <div className="flex items-center gap-2">
                       <button className="inline-flex h-9 items-center gap-1 rounded border border-[#d8dde5] px-3 text-sm text-[#6b7280]"><Filter className="h-4 w-4" />Filter</button>
                       <button className="inline-flex h-9 items-center gap-1 rounded border border-[#d8dde5] px-3 text-sm text-[#9ca3af]">Milestone<ChevronDown className="h-3.5 w-3.5" /></button>

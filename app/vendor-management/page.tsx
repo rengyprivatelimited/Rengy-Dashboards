@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Bell, Building2, CalendarClock, ChevronDown, Mail, MapPin, Phone, Search, Star, User, X } from "lucide-react";
 import { RootSidebar } from "@/components/RootSidebar";
 import { mockData } from "@/lib/mock-data";
+import { getVendorManagementData } from "@/features/admin/api/vendor-management";
 
-const vendorCards = mockData.vendorManagement.vendors;
-const vendorRequests = mockData.vendorManagement.requests;
+const fallbackVendorCards = mockData.vendorManagement.vendors;
+const fallbackVendorRequests = mockData.vendorManagement.requests;
 
 function VendorCard({
   id,
@@ -18,6 +19,7 @@ function VendorCard({
   costRange,
   teamSize,
   location,
+  userId
 }: {
   id: number;
   name: string;
@@ -27,10 +29,12 @@ function VendorCard({
   costRange: string;
   teamSize: string;
   location: string;
+  userId: string;
 }) {
+  const hrefId = userId && userId !== "-" ? userId : String(id);
   return (
     <Link
-      href={`/vendor-management/vnd-00${id}`}
+      href={`/vendor-management/${hrefId}`}
       className="group block rounded-lg border border-[#eceef2] bg-white p-3 transition-all duration-200 ease-out hover:-translate-y-[1px] hover:border-[#d8deea] hover:shadow-[0_2px_8px_rgba(17,22,63,0.08),0_10px_22px_rgba(17,22,63,0.06)]"
     >
       <div className="flex items-center justify-between">
@@ -89,10 +93,40 @@ function FilterButton({ label }: { label: string }) {
 
 export default function VendorManagementPage() {
   const [activeTab, setActiveTab] = useState<"vendors" | "requests">("vendors");
-  const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null);
+  const [vendorCards, setVendorCards] = useState(fallbackVendorCards);
+  const [vendorRequests, setVendorRequests] = useState(fallbackVendorRequests);
+  const [selectedRequest, setSelectedRequest] = useState<(typeof fallbackVendorRequests)[number] | null>(null);
+  const [searchInput, setSearchInput] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+
+  useEffect(() => {
+    let isMounted = true;
+
+    getVendorManagementData({ search: searchTerm })
+      .then((result) => {
+        if (!isMounted) return;
+        if (result.vendors.length > 0) setVendorCards(result.vendors);
+        if (result.requests.length > 0) setVendorRequests(result.requests);
+      })
+      .catch((error) => {
+        console.error("Vendor management API failed. Using fallback data.", error);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [searchTerm]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setSearchTerm(searchInput.trim());
+    }, 350);
+
+    return () => clearTimeout(timeout);
+  }, [searchInput]);
 
   return (
-    <div className="min-h-screen bg-[#eceef2] text-[#171b24]">
+    <div className="min-h-screen bg-[#eceef2] text-[#171b24]" suppressHydrationWarning>
       <div className="flex">
         <RootSidebar activeLabel="Vendor Management" />
 
@@ -134,7 +168,12 @@ export default function VendorManagementPage() {
             <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
               <div className="flex h-9 w-[180px] items-center gap-2 rounded border border-[#d8dde5] bg-white px-3 text-[12px] text-[#9aa2b1]">
                 <Search className="h-4 w-4" />
-                Search
+                <input
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                  placeholder="Search"
+                  className="h-full w-full bg-transparent text-[12px] text-[#111827] outline-none placeholder:text-[#9aa2b1]"
+                />
               </div>
               {activeTab === "vendors" ? (
                 <div className="flex flex-wrap items-center gap-2">
@@ -163,6 +202,7 @@ export default function VendorManagementPage() {
                     costRange={card.costRange}
                     teamSize={card.teamSize}
                     location={card.location}
+                    userId={card.userId}
                   />
                 ))}
               </div>
@@ -199,7 +239,7 @@ export default function VendorManagementPage() {
                     </div>
                     <button
                       className="mt-1.5 h-7 w-full rounded bg-[#11163f] text-[11px] font-semibold text-white"
-                      onClick={() => setSelectedRequestId(request.id)}
+                      onClick={() => setSelectedRequest(request)}
                     >
                       View Details
                     </button>
@@ -211,18 +251,18 @@ export default function VendorManagementPage() {
         </main>
       </div>
 
-      {selectedRequestId ? (
+      {selectedRequest ? (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/45">
           <aside className="flex h-full w-full max-w-[430px] flex-col border-l border-[#d7dde8] bg-white shadow-[-12px_0_28px_rgba(2,6,23,0.15)]">
             <div className="border-b border-[#e4e7ee] px-4 py-3">
               <div className="flex items-start justify-between">
                 <div>
-                  <div className="text-[16px] font-semibold text-[#1b2230]">Vendor Name</div>
-                  <div className="mt-1 text-[10px] text-[#8892a3]">12-12-2025, 10:30 AM</div>
+                  <div className="text-[16px] font-semibold text-[#1b2230]">{selectedRequest.name}</div>
+                  <div className="mt-1 text-[10px] text-[#8892a3]">{selectedRequest.requestedOn}</div>
                 </div>
                 <button
                   className="rounded border border-[#ced4df] p-1 text-[#5a6373] hover:bg-[#f2f4f8]"
-                  onClick={() => setSelectedRequestId(null)}
+                  onClick={() => setSelectedRequest(null)}
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -235,56 +275,72 @@ export default function VendorManagementPage() {
                   <User className="mt-0.5 h-4 w-4 text-[#1f4f84]" />
                   <div>
                     <div className="text-[#465062]">Vendor ID</div>
-                    <div className="mt-1 text-xs font-semibold leading-none text-[#1f2532]">#1231231</div>
+                    <div className="mt-1 text-xs font-semibold leading-none text-[#1f2532]">
+                      {selectedRequest.vendorId}
+                    </div>
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <Building2 className="mt-0.5 h-4 w-4 text-[#1f4f84]" />
                   <div>
                     <div className="text-[#465062]">Vendor Name</div>
-                    <div className="mt-1 text-xs font-semibold leading-none text-[#1f2532]">ABC Solutions</div>
+                    <div className="mt-1 text-xs font-semibold leading-none text-[#1f2532]">
+                      {selectedRequest.name}
+                    </div>
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <Mail className="mt-0.5 h-4 w-4 text-[#1f4f84]" />
                   <div>
                     <div className="text-[#465062]">Business Email</div>
-                    <div className="mt-1 text-xs font-semibold leading-none text-[#1f2532]">alex@gmail.com</div>
+                    <div className="mt-1 text-xs font-semibold leading-none text-[#1f2532]">
+                      {selectedRequest.email}
+                    </div>
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <Phone className="mt-0.5 h-4 w-4 text-[#1f4f84]" />
                   <div>
                     <div className="text-[#465062]">Business Phone</div>
-                    <div className="mt-1 text-xs font-semibold leading-none text-[#1f2532]">+912312 1231</div>
+                    <div className="mt-1 text-xs font-semibold leading-none text-[#1f2532]">
+                      {selectedRequest.mobile}
+                    </div>
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <User className="mt-0.5 h-4 w-4 text-[#1f4f84]" />
                   <div>
                     <div className="text-[#465062]">POC</div>
-                    <div className="mt-1 text-xs font-semibold leading-none text-[#1f2532]">Athul</div>
+                    <div className="mt-1 text-xs font-semibold leading-none text-[#1f2532]">
+                      {selectedRequest.pocName}
+                    </div>
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <Phone className="mt-0.5 h-4 w-4 text-[#1f4f84]" />
                   <div>
                     <div className="text-[#465062]">POC Phone</div>
-                    <div className="mt-1 text-xs font-semibold leading-none text-[#1f2532]">+912312 1231</div>
+                    <div className="mt-1 text-xs font-semibold leading-none text-[#1f2532]">
+                      {selectedRequest.pocPhone}
+                    </div>
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <Mail className="mt-0.5 h-4 w-4 text-[#1f4f84]" />
                   <div>
                     <div className="text-[#465062]">POC Email</div>
-                    <div className="mt-1 text-xs font-semibold leading-none text-[#1f2532]">sample@gmail.com</div>
+                    <div className="mt-1 text-xs font-semibold leading-none text-[#1f2532]">
+                      {selectedRequest.pocEmail}
+                    </div>
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <MapPin className="mt-0.5 h-4 w-4 text-[#1f4f84]" />
                   <div>
                     <div className="text-[#465062]">Address</div>
-                    <div className="mt-1 text-xs font-semibold leading-snug text-[#1f2532]">HSR layout , 2nd street , Bengaluru Urban, Karnataka</div>
+                    <div className="mt-1 text-xs font-semibold leading-snug text-[#1f2532]">
+                      {selectedRequest.address}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -292,23 +348,32 @@ export default function VendorManagementPage() {
               <div className="border-t border-[#e2e6ed] pt-3">
                 <div className="mb-2 text-sm font-semibold text-[#1f2532]">Files</div>
                 <div className="space-y-2">
-                  {["Aadhaar Card.PDF", "GST Certificate"].map((file) => (
-                    <div key={file} className="flex items-center justify-between rounded-md border border-[#cad3e4] bg-[#e8eefb] px-2 py-2">
-                      <div className="flex items-center gap-2">
-                        <div className="rounded bg-white p-1">
-                          <Building2 className="h-3.5 w-3.5 text-[#4c74c0]" />
-                        </div>
-                        <div>
-                          <div className="text-[12px] font-semibold text-[#1f2532]">{file}</div>
-                          <div className="text-[10px] text-[#6f7788]">12 June, 10:30 PM</div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button className="rounded border border-[#c2cce0] bg-white p-1 text-[#1f4f84]">↓</button>
-                        <button className="rounded bg-[#10153d] p-1 text-white">◉</button>
-                      </div>
+                  {selectedRequest.documents.length === 0 ? (
+                    <div className="rounded-md border border-[#cad3e4] bg-[#f6f8fc] px-2 py-2 text-[10px] text-[#6f7788]">
+                      No documents uploaded.
                     </div>
-                  ))}
+                  ) : (
+                    selectedRequest.documents.map((doc, index) => (
+                      <div
+                        key={`${doc.name}-${index}`}
+                        className="flex items-center justify-between rounded-md border border-[#cad3e4] bg-[#e8eefb] px-2 py-2"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="rounded bg-white p-1">
+                            <Building2 className="h-3.5 w-3.5 text-[#4c74c0]" />
+                          </div>
+                          <div>
+                            <div className="text-[12px] font-semibold text-[#1f2532]">{doc.name}</div>
+                            <div className="text-[10px] text-[#6f7788]">{doc.uploadedAt}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button className="rounded border border-[#c2cce0] bg-white px-2 py-0.5 text-[10px] text-[#1f4f84]">DL</button>
+                          <button className="rounded bg-[#10153d] px-2 py-0.5 text-[10px] text-white">View</button>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
                 <button className="mt-3 h-8 w-full rounded border border-[#f08f8f] bg-white text-[10px] font-semibold text-[#e53935]">
                   Request Re - Submit
@@ -317,10 +382,10 @@ export default function VendorManagementPage() {
             </div>
 
             <div className="mt-auto grid grid-cols-2 gap-2 px-4 pb-5 pt-3">
-              <button className="h-8 rounded border border-[#f08f8f] bg-white text-[10px] font-semibold text-[#e53935]" onClick={() => setSelectedRequestId(null)}>
+              <button className="h-8 rounded border border-[#f08f8f] bg-white text-[10px] font-semibold text-[#e53935]" onClick={() => setSelectedRequest(null)}>
                 Reject
               </button>
-              <button className="h-8 rounded bg-[#11163f] text-[10px] font-semibold text-white" onClick={() => setSelectedRequestId(null)}>
+              <button className="h-8 rounded bg-[#11163f] text-[10px] font-semibold text-white" onClick={() => setSelectedRequest(null)}>
                 Accept
               </button>
             </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bell,
@@ -15,11 +15,14 @@ import {
   X,
 } from "lucide-react";
 import { RootSidebar } from "@/components/RootSidebar";
-import { mockData } from "@/lib/mock-data";
+import {
+  getFinTechPartner,
+  getFinTechPartners,
+  type FinTechPartner,
+  type FinTechPartnerDetail,
+} from "@/features/admin/api/fintech-partners";
 
 type ViewMode = "grid" | "list";
-
-const partners = mockData.fintechPartners.partners;
 
 function FilterButton({ label }: { label: string }) {
   return (
@@ -30,20 +33,12 @@ function FilterButton({ label }: { label: string }) {
   );
 }
 
-function PartnerLogo({ name }: { name: string }) {
-  if (name.includes("ICICI")) {
+function PartnerLogo({ name, logoUrl }: { name: string; logoUrl: string }) {
+  if (logoUrl) {
     return (
-      <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#d6dce6] bg-white">
-        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-[#f39a21] to-[#c1262d] text-[12px] font-bold italic text-white">
-          i
-        </div>
-      </div>
-    );
-  }
-  if (name.includes("CITI")) {
-    return (
-      <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#d6dce6] bg-[#2f5fd3] text-[10px] font-semibold uppercase tracking-tight text-white">
-        citi
+      <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-[#d6dce6] bg-white">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={logoUrl} alt={name} className="h-full w-full object-contain" />
       </div>
     );
   }
@@ -59,8 +54,62 @@ function PartnerLogo({ name }: { name: string }) {
 export default function FinTechPartnersPage() {
   const router = useRouter();
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [partners, setPartners] = useState<FinTechPartner[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editPartnerId, setEditPartnerId] = useState<number | null>(null);
+  const [editPartner, setEditPartner] = useState<FinTechPartnerDetail | null>(null);
+  const [isEditLoading, setIsEditLoading] = useState(false);
+
+  useEffect(() => {
+    let isActive = true;
+    const loadPartners = async () => {
+      try {
+        setIsLoading(true);
+        const results = await getFinTechPartners({ search: "", page: 1, perPage: 10 });
+        if (!isActive) return;
+        setPartners(results);
+      } catch (error) {
+        console.error("Failed to load fin-tech partners", error);
+      } finally {
+        if (isActive) setIsLoading(false);
+      }
+    };
+
+    loadPartners();
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadPartnerDetail = async () => {
+      if (!editOpen || !editPartnerId) return;
+      setIsEditLoading(true);
+      try {
+        const result = await getFinTechPartner(editPartnerId);
+        if (!isActive) return;
+        setEditPartner(result);
+      } catch (error) {
+        console.error("Failed to load fin-tech partner detail", error);
+      } finally {
+        if (isActive) setIsEditLoading(false);
+      }
+    };
+
+    loadPartnerDetail();
+    return () => {
+      isActive = false;
+    };
+  }, [editOpen, editPartnerId]);
+
+  const editPartnerLabel = useMemo(() => {
+    if (isEditLoading) return "Loading...";
+    return editPartner?.name ?? "Fin-tech Partner";
+  }, [editPartner, isEditLoading]);
 
   return (
     <div className="min-h-screen bg-[#eceef2] text-[#171b24]">
@@ -124,48 +173,70 @@ export default function FinTechPartnersPage() {
 
             {viewMode === "grid" ? (
               <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-4">
-                {Array.from({ length: 8 }).map((_, idx) => {
-                  const item = partners[idx % partners.length];
-                  return (
-                    <article
-                      key={idx}
-                      className="cursor-pointer rounded-xl border border-[#e7ebf1] bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
-                      onClick={() => router.push(`/fin-tech-partners/ft-${item.id}`)}
-                    >
-                      <div className="rounded-lg bg-white">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <PartnerLogo name={item.name} />
-                            <div>
-                              <h3 className="text-[13px] font-medium text-[#343b47]">{item.name}</h3>
-                              <div className="text-[10px] text-[#80899a]">{item.sub}</div>
-                            </div>
+                {isLoading
+                  ? Array.from({ length: 8 }).map((_, idx) => (
+                      <div
+                        key={`skeleton-${idx}`}
+                        className="rounded-xl border border-[#e7ebf1] bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="h-9 w-9 rounded-xl border border-[#e7ebf1] bg-[#eef1f6]" />
+                          <div className="space-y-2">
+                            <div className="h-3 w-24 rounded bg-[#e3e7ee]" />
+                            <div className="h-2.5 w-16 rounded bg-[#eef1f6]" />
                           </div>
                         </div>
                         <div className="my-3 h-px bg-[#e6ebf2]" />
                         <div className="grid grid-cols-2 gap-y-3">
-                          <div>
-                            <div className="text-[10px] text-[#939baa]">POC</div>
-                            <div className="mt-1 text-[11px] font-semibold text-[#3d4451]">{item.poc}</div>
+                          {Array.from({ length: 4 }).map((__, colIdx) => (
+                            <div key={`sk-${idx}-${colIdx}`}>
+                              <div className="h-2 w-12 rounded bg-[#eef1f6]" />
+                              <div className="mt-2 h-3 w-20 rounded bg-[#e3e7ee]" />
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3 h-7 w-full rounded-md bg-[#e3e7ee]" />
+                      </div>
+                    ))
+                  : partners.map((item) => (
+                      <article
+                        key={item.id}
+                        className="cursor-pointer rounded-xl border border-[#e7ebf1] bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+                        onClick={() => router.push(`/fin-tech-partners/ft-${item.id}`)}
+                      >
+                        <div className="rounded-lg bg-white">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <PartnerLogo name={item.name} logoUrl={item.logoUrl} />
+                              <div>
+                                <h3 className="text-[13px] font-medium text-[#343b47]">{item.name}</h3>
+                                <div className="text-[10px] text-[#80899a]">{item.sub}</div>
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <div className="text-[10px] text-[#939baa]">Location</div>
-                            <div className="mt-1 text-[11px] font-semibold text-[#3d4451]">Bengaluru</div>
-                          </div>
-                          <div>
-                            <div className="text-[10px] text-[#939baa]">Email</div>
-                            <div className="mt-1 text-[11px] font-semibold text-[#3d4451]">sample@gmail.com</div>
-                          </div>
-                          <div>
-                            <div className="text-[10px] text-[#939baa]">Phone</div>
-                            <div className="mt-1 text-[11px] font-semibold text-[#3d4451]">+91223123121</div>
+                          <div className="my-3 h-px bg-[#e6ebf2]" />
+                          <div className="grid grid-cols-2 gap-y-3">
+                            <div>
+                              <div className="text-[10px] text-[#939baa]">POC</div>
+                              <div className="mt-1 text-[11px] font-semibold text-[#3d4451]">{item.poc}</div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] text-[#939baa]">Location</div>
+                              <div className="mt-1 text-[11px] font-semibold text-[#3d4451]">{item.location}</div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] text-[#939baa]">Email</div>
+                              <div className="mt-1 text-[11px] font-semibold text-[#3d4451]">{item.email}</div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] text-[#939baa]">Phone</div>
+                              <div className="mt-1 text-[11px] font-semibold text-[#3d4451]">{item.phone}</div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <button className="mt-3 h-7 w-full rounded-md bg-[#181d52] text-[11px] font-semibold text-white">Chat</button>
-                    </article>
-                  );
-                })}
+                        <button className="mt-3 h-7 w-full rounded-md bg-[#181d52] text-[11px] font-semibold text-white">Chat</button>
+                      </article>
+                    ))}
               </div>
             ) : (
               <div className="mt-3 overflow-auto rounded-lg border border-[#dce1e8] bg-white">
@@ -193,50 +264,62 @@ export default function FinTechPartnersPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {partners.map((row) => (
-                      <tr
-                        key={row.id}
-                        className="h-12 cursor-pointer border-t border-[#e6eaf1] odd:bg-[#f8f9fb]"
-                        onClick={() => router.push(`/fin-tech-partners/ft-${row.id}`)}
-                      >
-                        <td className="px-2"><input type="checkbox" className="h-4 w-4" onClick={(event) => event.stopPropagation()} /></td>
-                        <td className="px-2">
-                          <div className="flex items-center gap-2">
-                            <PartnerLogo name={row.name} />
-                            <div>
-                              <div className="font-medium">{row.name}</div>
-                              <div className="text-[10px] text-[#7c8596]">{row.sub}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-2" />
-                        <td className="px-2">{row.poc}</td>
-                        <td className="px-2">{row.location}</td>
-                        <td className="px-2 font-semibold">{row.type}</td>
-                        <td className="px-2">{row.loans}</td>
-                        <td className="px-2">{row.disbursed}</td>
-                        <td className="px-2">{row.resub}</td>
-                        <td className="px-2">{row.logins}</td>
-                        <td className="px-2">{row.avg}</td>
-                        <td className="px-2">{row.approved}</td>
-                        <td className="px-2"><span className="rounded bg-[#daf2da] px-2 py-0.5 text-[10px] font-semibold text-[#1b9e30]">{row.approvalRate}</span></td>
-                        <td className="px-2"><span className="rounded bg-[#fbe8db] px-2 py-0.5 text-[10px] font-semibold text-[#c16b1e]">{row.rejectedRate}</span></td>
-                        <td className="px-2">{row.rejectedLoans}</td>
-                        <td className="px-2">{row.phone}</td>
-                        <td className="px-2">{row.email}</td>
-                        <td className="px-2">
-                          <button
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setEditOpen(true);
-                            }}
-                            className="text-[#6d7483]"
+                    {isLoading
+                      ? Array.from({ length: 8 }).map((_, idx) => (
+                          <tr key={`row-skel-${idx}`} className="h-12 border-t border-[#e6eaf1] odd:bg-[#f8f9fb]">
+                            {Array.from({ length: 18 }).map((__, colIdx) => (
+                              <td key={`cell-${idx}-${colIdx}`} className="px-2">
+                                <div className="h-3 w-full max-w-[120px] rounded bg-[#e3e7ee]" />
+                              </td>
+                            ))}
+                          </tr>
+                        ))
+                      : partners.map((row) => (
+                          <tr
+                            key={row.id}
+                            className="h-12 cursor-pointer border-t border-[#e6eaf1] odd:bg-[#f8f9fb]"
+                            onClick={() => router.push(`/fin-tech-partners/ft-${row.id}`)}
                           >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                            <td className="px-2"><input type="checkbox" className="h-4 w-4" onClick={(event) => event.stopPropagation()} /></td>
+                            <td className="px-2">
+                              <div className="flex items-center gap-2">
+                                <PartnerLogo name={row.name} logoUrl={row.logoUrl} />
+                                <div>
+                                  <div className="font-medium">{row.name}</div>
+                                  <div className="text-[10px] text-[#7c8596]">{row.sub}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-2" />
+                            <td className="px-2">{row.poc}</td>
+                            <td className="px-2">{row.location}</td>
+                            <td className="px-2 font-semibold">{row.type}</td>
+                            <td className="px-2">{row.loans}</td>
+                            <td className="px-2">{row.disbursed}</td>
+                            <td className="px-2">{row.resub}</td>
+                            <td className="px-2">{row.logins}</td>
+                            <td className="px-2">{row.avg}</td>
+                            <td className="px-2">{row.approved}</td>
+                            <td className="px-2"><span className="rounded bg-[#daf2da] px-2 py-0.5 text-[10px] font-semibold text-[#1b9e30]">{row.approvalRate}</span></td>
+                            <td className="px-2"><span className="rounded bg-[#fbe8db] px-2 py-0.5 text-[10px] font-semibold text-[#c16b1e]">{row.rejectedRate}</span></td>
+                            <td className="px-2">{row.rejectedLoans}</td>
+                            <td className="px-2">{row.phone}</td>
+                            <td className="px-2">{row.email}</td>
+                            <td className="px-2">
+                              <button
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setEditPartnerId(row.id);
+                                  setEditPartner(null);
+                                  setEditOpen(true);
+                                }}
+                                className="text-[#6d7483]"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
                   </tbody>
                 </table>
                 <div className="flex items-center justify-between border-t border-[#e6eaf1] px-3 py-2 text-xs">
@@ -266,8 +349,11 @@ export default function FinTechPartnersPage() {
         <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
           <aside className="flex h-full w-full max-w-[360px] flex-col border-l border-[#d7dde8] bg-white shadow-[-12px_0_28px_rgba(2,6,23,0.15)]">
             <div className="flex items-center justify-between border-b border-[#e4e7ee] px-4 py-3">
-              <div className="text-[24px] font-medium leading-none text-[#1b2230]">Edit Fin-tech Partner</div>
-              <button className="rounded border border-[#ced4df] p-1 text-[#5a6373]" onClick={() => setEditOpen(false)}>
+              <div className="text-[24px] font-medium leading-none text-[#1b2230]">Edit {editPartnerLabel}</div>
+              <button
+                className="rounded border border-[#ced4df] p-1 text-[#5a6373]"
+                onClick={() => setEditOpen(false)}
+              >
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -275,7 +361,12 @@ export default function FinTechPartnersPage() {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="mb-1 block font-semibold">Partner Name*</label>
-                  <input value="NBFC" readOnly className="h-8 w-full rounded border border-[#d5dbe6] bg-[#f3f4f6] px-2" />
+                  <input
+                    value={isEditLoading ? "" : editPartner?.name ?? ""}
+                    readOnly
+                    placeholder={isEditLoading ? "Loading..." : ""}
+                    className="h-8 w-full rounded border border-[#d5dbe6] bg-[#f3f4f6] px-2"
+                  />
                 </div>
                 <div>
                   <label className="mb-1 block font-semibold">Partner Logo</label>
@@ -288,27 +379,59 @@ export default function FinTechPartnersPage() {
                 </div>
                 <div>
                   <label className="mb-1 block font-semibold">Region*</label>
-                  <button className="flex h-8 w-full items-center justify-between rounded border border-[#d5dbe6] bg-[#f3f4f6] px-2">Select <ChevronDown className="h-3.5 w-3.5" /></button>
+                  <button className="flex h-8 w-full items-center justify-between rounded border border-[#d5dbe6] bg-[#f3f4f6] px-2">
+                    {isEditLoading ? "Loading..." : editPartner?.location ?? "-"}
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </button>
                 </div>
                 <div>
                   <label className="mb-1 block font-semibold">Founded In</label>
-                  <button className="flex h-8 w-full items-center justify-between rounded border border-[#d5dbe6] bg-[#f3f4f6] px-2">Select Date <Calendar className="h-3.5 w-3.5" /></button>
+                  <button className="flex h-8 w-full items-center justify-between rounded border border-[#d5dbe6] bg-[#f3f4f6] px-2">
+                    {isEditLoading ? "Loading..." : editPartner?.foundedIn ?? "-"}
+                    <Calendar className="h-3.5 w-3.5" />
+                  </button>
                 </div>
                 <div>
                   <label className="mb-1 block font-semibold">Primary Contact Name</label>
-                  <input value="Enter Name" readOnly className="h-8 w-full rounded border border-[#d5dbe6] bg-[#f3f4f6] px-2" />
+                  <input
+                    value={isEditLoading ? "" : editPartner?.poc ?? ""}
+                    readOnly
+                    placeholder={isEditLoading ? "Loading..." : ""}
+                    className="h-8 w-full rounded border border-[#d5dbe6] bg-[#f3f4f6] px-2"
+                  />
                 </div>
                 <div>
                   <label className="mb-1 block font-semibold">Contact</label>
-                  <input value="Enter email /Phone" readOnly className="h-8 w-full rounded border border-[#d5dbe6] bg-[#f3f4f6] px-2" />
+                  <input
+                    value={
+                      isEditLoading
+                        ? ""
+                        : editPartner
+                          ? `${editPartner.email || "-"} / ${editPartner.phone || "-"}`
+                          : ""
+                    }
+                    readOnly
+                    placeholder={isEditLoading ? "Loading..." : ""}
+                    className="h-8 w-full rounded border border-[#d5dbe6] bg-[#f3f4f6] px-2"
+                  />
                 </div>
                 <div>
                   <label className="mb-1 block font-semibold">URL</label>
-                  <input value="URL" readOnly className="h-8 w-full rounded border border-[#d5dbe6] bg-[#f3f4f6] px-2" />
+                  <input
+                    value={isEditLoading ? "" : editPartner?.website ?? ""}
+                    readOnly
+                    placeholder={isEditLoading ? "Loading..." : ""}
+                    className="h-8 w-full rounded border border-[#d5dbe6] bg-[#f3f4f6] px-2"
+                  />
                 </div>
                 <div>
                   <label className="mb-1 block font-semibold">Address</label>
-                  <input value="Enter the Address" readOnly className="h-8 w-full rounded border border-[#d5dbe6] bg-[#f3f4f6] px-2" />
+                  <input
+                    value={isEditLoading ? "" : editPartner?.address ?? ""}
+                    readOnly
+                    placeholder={isEditLoading ? "Loading..." : ""}
+                    className="h-8 w-full rounded border border-[#d5dbe6] bg-[#f3f4f6] px-2"
+                  />
                 </div>
                 <div>
                   <label className="mb-1 block font-semibold">Upload Files</label>
@@ -321,7 +444,10 @@ export default function FinTechPartnersPage() {
                 </div>
                 <div>
                   <label className="mb-1 block font-semibold">Type Of Fintech Partner</label>
-                  <button className="flex h-8 w-full items-center justify-between rounded border border-[#d5dbe6] bg-[#f3f4f6] px-2">Select <ChevronDown className="h-3.5 w-3.5" /></button>
+                  <button className="flex h-8 w-full items-center justify-between rounded border border-[#d5dbe6] bg-[#f3f4f6] px-2">
+                    {isEditLoading ? "Loading..." : editPartner?.type ?? "-"}
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </button>
                 </div>
                 <div>
                   <label className="mb-1 block font-semibold">Partner View</label>
@@ -331,7 +457,12 @@ export default function FinTechPartnersPage() {
         
               <div>
                 <label className="mb-1 block font-semibold">Remarks <span className="font-normal text-[#6f7788]">( Reason for rejection )</span></label>
-                <textarea rows={4} defaultValue="Type Remarks" className="w-full rounded border border-[#d5dbe6] p-2 text-[10px]" />
+                <textarea
+                  rows={4}
+                  defaultValue={editPartner?.remarks ?? ""}
+                  className="w-full rounded border border-[#d5dbe6] p-2 text-[10px]"
+                  placeholder={isEditLoading ? "Loading..." : "Type Remarks"}
+                />
               </div>
             </div>
             <div className="mt-auto space-y-2 px-4 pb-4">

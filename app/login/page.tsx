@@ -4,7 +4,32 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
-import { DEMO_USERS, ROLE_LABELS, findDemoUser, getDashboardPath } from "@/features/auth/auth-config";
+import { getApiProxyBaseUrl } from "@/lib/api/client";
+import { mapApiUserToRole } from "@/features/auth/role-mapper";
+import { getDashboardPath } from "@/features/auth/auth-config";
+
+type LoginApiResponse = {
+  status?: boolean;
+  message?: string;
+  data?: Array<{
+    accessToken?: string;
+    refreshToken?: string;
+    user?: {
+      id?: number;
+      name?: string;
+      userType?: number;
+      role?: {
+        userTypeDetail?: {
+          name?: string;
+        };
+      };
+    };
+  }>;
+};
+
+function setClientCookie(name: string, value: string, maxAgeSeconds: number) {
+  document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAgeSeconds}; SameSite=Lax`;
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,26 +37,70 @@ export default function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const handleLogin = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const username = String(formData.get("username") ?? "");
     const password = String(formData.get("password") ?? "");
-    const user = findDemoUser(username, password);
-
-    if (!user) {
-      setErrorMessage("Invalid username or password. Use demo credentials listed below.");
-      return;
-    }
 
     setErrorMessage("");
     setIsSubmitting(true);
 
-    document.cookie = "rengy_auth=1; Path=/; Max-Age=86400; SameSite=Lax";
-    document.cookie = `rengy_role=${user.role}; Path=/; Max-Age=86400; SameSite=Lax`;
-    document.cookie = `rengy_name=${encodeURIComponent(user.name)}; Path=/; Max-Age=86400; SameSite=Lax`;
-    router.push(getDashboardPath(user.role));
-    router.refresh();
+    try {
+      const response = await fetch(`${getApiProxyBaseUrl()}/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as LoginApiResponse | null;
+
+      if (!response.ok || !payload?.status) {
+        setErrorMessage(payload?.message ?? "Invalid username or password.");
+        return;
+      }
+
+      const loginData = payload.data?.[0];
+      const accessToken = loginData?.accessToken;
+      const refreshToken = loginData?.refreshToken;
+      const user = loginData?.user;
+
+      if (!accessToken || !refreshToken || !user) {
+        setErrorMessage("Login response is missing required fields.");
+        return;
+      }
+
+      const role = mapApiUserToRole(user);
+      const name = user.name?.trim() || "User";
+      const userType = Number(user.userType);
+
+      const oneDay = 60 * 60 * 24;
+      const sevenDays = oneDay * 7;
+      const thirtyDays = oneDay * 30;
+
+      setClientCookie("rengy_auth", "1", sevenDays);
+      setClientCookie("rengy_role", role, sevenDays);
+      setClientCookie("rengy_name", name, sevenDays);
+      setClientCookie("rengy_access_token", accessToken, oneDay);
+      setClientCookie("rengy_refresh_token", refreshToken, thirtyDays);
+      if (Number.isFinite(userType) && userType > 0) {
+        setClientCookie("rengy_user_type", String(userType), sevenDays);
+      }
+      if (user.id) {
+        setClientCookie("rengy_user_id", String(user.id), sevenDays);
+      }
+
+      router.push(getDashboardPath(role));
+      router.refresh();
+    } catch (error) {
+      console.error("Login failed", error);
+      setErrorMessage("Unable to login right now. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -100,18 +169,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-7 rounded border border-[#d7d7d7] bg-[#fcfcfc] p-3 text-left">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#5d5d5d]">Demo Credentials</div>
-            <div className="max-h-[190px] space-y-1 overflow-auto pr-1 text-xs text-[#333]">
-              {DEMO_USERS.map((user) => (
-                <div key={user.username} className="grid grid-cols-[1.2fr_1fr_1fr] gap-2 border-b border-[#ececec] py-1">
-                  <span className="font-medium">{ROLE_LABELS[user.role]}</span>
-                  <span>{user.username}</span>
-                  <span>{user.password}</span>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
       </section>
     </main>

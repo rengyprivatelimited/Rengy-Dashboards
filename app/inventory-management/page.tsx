@@ -18,34 +18,31 @@ import {
   X,
 } from "lucide-react";
 import { RootSidebar } from "@/components/RootSidebar";
-import { mockData } from "@/lib/mock-data";
-
-type InventoryItem = {
-  id: number;
-  itemCode: string;
-  itemName: string;
-  category: string;
-  brand: string;
-  count: string;
-  specification: string;
-  updated: string;
-  currentPrice: string;
-};
-
-const inventoryRows: InventoryItem[] = mockData.inventoryManagement.rows as InventoryItem[];
-const categoryOptions = mockData.inventoryManagement.categoryOptions;
+import {
+  getInventoryCategories,
+  getInventoryItems,
+  type InventoryCategory,
+  type InventoryItem,
+} from "@/features/admin/api/inventory";
 
 type CategorySelectProps = {
   value: string;
   onChange: (value: string) => void;
+  options: string[];
 };
 
-function CategorySelect({ value, onChange }: CategorySelectProps) {
+function CategorySelect({ value, onChange, options }: CategorySelectProps) {
   const [open, setOpen] = useState(false);
   const [showAddNew, setShowAddNew] = useState(false);
   const [newCategory, setNewCategory] = useState("");
-  const [localOptions, setLocalOptions] = useState(categoryOptions);
+  const [localOptions, setLocalOptions] = useState(options);
   const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (options.length) {
+      setLocalOptions(options);
+    }
+  }, [options]);
 
   useEffect(() => {
     function handleClose(event: MouseEvent) {
@@ -149,9 +146,10 @@ type InventoryFormDrawerProps = {
   row: InventoryItem | null;
   onClose: () => void;
   onSave: (item: InventoryItem) => void;
+  categoryOptions: string[];
 };
 
-function InventoryFormDrawer({ mode, row, onClose, onSave }: InventoryFormDrawerProps) {
+function InventoryFormDrawer({ mode, row, onClose, onSave, categoryOptions }: InventoryFormDrawerProps) {
   const [categoryValue, setCategoryValue] = useState(row?.category ?? "Select");
 
   return (
@@ -177,7 +175,7 @@ function InventoryFormDrawer({ mode, row, onClose, onSave }: InventoryFormDrawer
           </div>
           <div>
             <label className="mb-1 block font-semibold">Category*</label>
-            <CategorySelect value={categoryValue} onChange={setCategoryValue} />
+            <CategorySelect value={categoryValue} onChange={setCategoryValue} options={categoryOptions} />
           </div>
           <div>
             <label className="mb-1 block font-semibold">Brand*</label>
@@ -319,7 +317,9 @@ function InventoryDetailDrawer({ row, onClose, onEdit }: InventoryDetailDrawerPr
 }
 
 export default function InventoryManagementPage() {
-  const [rowsData, setRowsData] = useState<InventoryItem[]>(inventoryRows);
+  const [rowsData, setRowsData] = useState<InventoryItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [selectedRow, setSelectedRow] = useState<InventoryItem | null>(null);
   const [editRow, setEditRow] = useState<InventoryItem | null>(null);
@@ -334,6 +334,33 @@ export default function InventoryManagementPage() {
     }
     document.addEventListener("mousedown", onOutside);
     return () => document.removeEventListener("mousedown", onOutside);
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadInventory = async () => {
+      try {
+        setIsLoading(true);
+        const [items, categories] = await Promise.all([
+          getInventoryItems({ search: "", page: 1, perPage: 10 }),
+          getInventoryCategories(),
+        ]);
+        if (!isActive) return;
+        setRowsData(items);
+        setCategoryOptions(categories.map((category) => category.name));
+      } catch (error) {
+        console.error("Failed to load inventory data", error);
+      } finally {
+        if (isActive) setIsLoading(false);
+      }
+    };
+
+    loadInventory();
+
+    return () => {
+      isActive = false;
+    };
   }, []);
 
   return (
@@ -410,73 +437,83 @@ export default function InventoryManagementPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rowsData.map((row) => (
-                    <tr
-                      key={row.id}
-                      className="h-[74px] cursor-pointer border-t border-[#e6eaf1] odd:bg-[#f8f9fb]"
-                      onClick={() => {
-                        setSelectedRow(row);
-                        setOpenMenuId(null);
-                      }}
-                    >
-                      <td className="px-3">
-                        <input
-                          type="checkbox"
-                          className="h-5 w-5 rounded border-[#b7c1d0]"
-                          onClick={(event) => event.stopPropagation()}
-                        />
-                      </td>
-                      <td className="px-3 font-medium">{row.itemCode}</td>
-                      <td className="px-3" />
-                      <td className="px-3">{row.itemName}</td>
-                      <td className="px-3">{row.category}</td>
-                      <td className="px-3">{row.brand}</td>
-                      <td className="px-3">{row.count}</td>
-                      <td className="whitespace-pre-line px-3">{row.specification}</td>
-                      <td className="px-3 font-semibold">{row.updated}</td>
-                      <td className="px-3 font-semibold">{row.currentPrice}</td>
-                      <td className="relative px-3">
-                        <div ref={openMenuId === row.id ? menuRef : null} className="relative">
-                          <button
-                            className="rounded-full p-1.5 text-[#262d39] hover:bg-[#eef1f6]"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setOpenMenuId((prev) => (prev === row.id ? null : row.id));
-                            }}
-                          >
-                            <MoreVertical className="h-5 w-5" />
-                          </button>
-                          {openMenuId === row.id ? (
-                            <div className="absolute right-0 top-9 z-20 w-[118px] overflow-hidden rounded-2xl border border-[#dadde4] bg-white shadow-[0_14px_22px_rgba(15,23,42,0.14)]">
+                  {isLoading
+                    ? Array.from({ length: 8 }).map((_, idx) => (
+                        <tr key={`inventory-skel-${idx}`} className="h-[74px] border-t border-[#e6eaf1] odd:bg-[#f8f9fb]">
+                          {Array.from({ length: 11 }).map((__, colIdx) => (
+                            <td key={`inventory-skel-${idx}-${colIdx}`} className="px-3">
+                              <div className="h-3 w-full max-w-[140px] rounded bg-[#e3e7ee]" />
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    : rowsData.map((row) => (
+                        <tr
+                          key={row.id}
+                          className="h-[74px] cursor-pointer border-t border-[#e6eaf1] odd:bg-[#f8f9fb]"
+                          onClick={() => {
+                            setSelectedRow(row);
+                            setOpenMenuId(null);
+                          }}
+                        >
+                          <td className="px-3">
+                            <input
+                              type="checkbox"
+                              className="h-5 w-5 rounded border-[#b7c1d0]"
+                              onClick={(event) => event.stopPropagation()}
+                            />
+                          </td>
+                          <td className="px-3 font-medium">{row.itemCode}</td>
+                          <td className="px-3" />
+                          <td className="px-3">{row.itemName}</td>
+                          <td className="px-3">{row.category}</td>
+                          <td className="px-3">{row.brand}</td>
+                          <td className="px-3">{row.count}</td>
+                          <td className="whitespace-pre-line px-3">{row.specification}</td>
+                          <td className="px-3 font-semibold">{row.updated}</td>
+                          <td className="px-3 font-semibold">{row.currentPrice}</td>
+                          <td className="relative px-3">
+                            <div ref={openMenuId === row.id ? menuRef : null} className="relative">
                               <button
-                                className="flex h-11 w-full items-center gap-2 border-b border-[#ebedf2] px-3 text-[12px] text-[#6f7684]"
+                                className="rounded-full p-1.5 text-[#262d39] hover:bg-[#eef1f6]"
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  setEditRow(row);
-                                  setSelectedRow(null);
-                                  setOpenMenuId(null);
+                                  setOpenMenuId((prev) => (prev === row.id ? null : row.id));
                                 }}
                               >
-                                <PencilLine className="h-5 w-5" />
-                                <span>Edit</span>
+                                <MoreVertical className="h-5 w-5" />
                               </button>
-                              <button
-                                className="flex h-11 w-full items-center gap-2 px-3 text-[12px] text-[#ff3b3b]"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setRowsData((prev) => prev.filter((item) => item.id !== row.id));
-                                  setOpenMenuId(null);
-                                }}
-                              >
-                                <Trash2 className="h-5 w-5" />
-                                <span>Delete</span>
-                              </button>
+                              {openMenuId === row.id ? (
+                                <div className="absolute right-0 top-9 z-20 w-[118px] overflow-hidden rounded-2xl border border-[#dadde4] bg-white shadow-[0_14px_22px_rgba(15,23,42,0.14)]">
+                                  <button
+                                    className="flex h-11 w-full items-center gap-2 border-b border-[#ebedf2] px-3 text-[12px] text-[#6f7684]"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setEditRow(row);
+                                      setSelectedRow(null);
+                                      setOpenMenuId(null);
+                                    }}
+                                  >
+                                    <PencilLine className="h-5 w-5" />
+                                    <span>Edit</span>
+                                  </button>
+                                  <button
+                                    className="flex h-11 w-full items-center gap-2 px-3 text-[12px] text-[#ff3b3b]"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setRowsData((prev) => prev.filter((item) => item.id !== row.id));
+                                      setOpenMenuId(null);
+                                    }}
+                                  >
+                                    <Trash2 className="h-5 w-5" />
+                                    <span>Delete</span>
+                                  </button>
+                                </div>
+                              ) : null}
                             </div>
-                          ) : null}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                          </td>
+                        </tr>
+                      ))}
                 </tbody>
               </table>
 
@@ -519,6 +556,7 @@ export default function InventoryManagementPage() {
           row={editRow}
           onClose={() => setEditRow(null)}
           onSave={(item) => setRowsData((prev) => prev.map((row) => (row.id === item.id ? item : row)))}
+          categoryOptions={categoryOptions}
         />
       ) : null}
       {showCreate ? (
@@ -527,6 +565,7 @@ export default function InventoryManagementPage() {
           row={null}
           onClose={() => setShowCreate(false)}
           onSave={(item) => setRowsData((prev) => [item, ...prev])}
+          categoryOptions={categoryOptions}
         />
       ) : null}
     </div>

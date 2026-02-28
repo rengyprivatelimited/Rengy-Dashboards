@@ -16,7 +16,7 @@ export function proxy(request: NextRequest) {
   const hasValidRole = !!roleCookie && isRoleSlug(roleCookie);
   const roleDashboardPath = hasValidRole ? getDashboardPath(roleCookie) : "/login";
 
-  // Allow logout route to execute so it can clear cookies.
+  // Allow logout page to run its client-side cleanup flow.
   if (pathname === "/logout") {
     return NextResponse.next();
   }
