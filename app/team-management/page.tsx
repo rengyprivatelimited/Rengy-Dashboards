@@ -19,7 +19,12 @@ import {
 } from "lucide-react";
 import { RootSidebar } from "@/components/RootSidebar";
 import { mockData } from "@/lib/mock-data";
-import { getTeamUsers } from "@/features/admin/api/team-management";
+import {
+  createTeamUser,
+  deleteTeamUser,
+  getTeamUsers,
+  updateTeamUser,
+} from "@/features/admin/api/team-management";
 
 type TeamTab =
   | "Sales Team"
@@ -58,14 +63,12 @@ const teamTabs: TeamTab[] = (() => {
   return [...base, "Supply Chain Team"];
 })();
 
-const fallbackUsers: UserRow[] = mockData.teamManagement.users as UserRow[];
-
 function emptyForm(): UserForm {
-  return { name: "", email: "", phone: "", team: "Sales Team", role: {name: "Manager"}, joiningDate: "12-12-2025" };
+  return { name: "", email: "", phone: "", team: "Sales Team", role: {name: "Manager"}, joiningDate: "" };
 }
 
 function filledFormFromUser(user: UserRow): UserForm {
-  return { name: user.name, email: user.email, phone: user.phone, team: user.team, role: {name: "Manager"}, joiningDate: "12-12-2025" };
+  return { name: user.name, email: user.email, phone: user.phone, team: user.team, role: {name: "Manager"}, joiningDate: user.dateCreated ?? "" };
 }
 
 function SkeletonBlock({ className }: { className: string }) {
@@ -82,7 +85,14 @@ function TeamManagementPageComponent() {
   const [targetDuration, setTargetDuration] = useState("Custom");
   const [targetCustomDate, setTargetCustomDate] = useState("12-12-2025");
   const [usersByTeam, setUsersByTeam] = useState<Record<string, UserRow[]>>({});
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchText, setSearchText] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [perPage] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -93,6 +103,14 @@ function TeamManagementPageComponent() {
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(searchText.trim());
+      setPage(1);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [searchText]);
 
   useEffect(() => {
     const teamTypeMap: Partial<Record<TeamTab, number>> = {
@@ -112,7 +130,7 @@ function TeamManagementPageComponent() {
     let isMounted = true;
 
     setIsLoading(true);
-    getTeamUsers({ type })
+    getTeamUsers({ type, search: debouncedSearch, page, perPage })
       .then((result) => {
         if (!isMounted) return;
         setUsersByTeam((prev) => ({
@@ -122,6 +140,7 @@ function TeamManagementPageComponent() {
             team: activeTeamTab,
           })),
         }));
+        setTotalPages(result.pagination.totalPages);
       })
       .catch((error) => {
         console.error("Team users API failed. Using fallback data.", error);
@@ -134,13 +153,13 @@ function TeamManagementPageComponent() {
     return () => {
       isMounted = false;
     };
-  }, [activeTeamTab]);
+  }, [activeTeamTab, debouncedSearch, page, perPage]);
 
   const rows = useMemo(() => {
     const apiRows = usersByTeam[activeTeamTab];
     if (apiRows && apiRows.length > 0) return apiRows;
     if (isLoading) return [];
-    return fallbackUsers.filter((row) => row.team === activeTeamTab);
+    return [];
   }, [activeTeamTab, usersByTeam, isLoading]);
 
   const openView = (row: UserRow) => {
@@ -159,6 +178,63 @@ function TeamManagementPageComponent() {
     setSelectedUser(null);
     setForm(emptyForm());
     setDrawerMode("add");
+  };
+
+  const handleSaveUser = async () => {
+    if (!form.name || !form.email || !form.phone) return;
+    setIsSaving(true);
+    setActionError(null);
+    const teamTypeMap: Partial<Record<TeamTab, number>> = {
+      "Sales Team": 4,
+      "Loan Team": 5,
+      Finance: 6,
+      Design: 7,
+      "Operation Team": 8,
+      "Supply Chain Team": 9,
+      "Net Metering Team": 10,
+      "AMC Team": 11,
+    };
+    const userType = teamTypeMap[form.team as TeamTab] ?? 4;
+
+    try {
+      if (drawerMode === "add") {
+        await createTeamUser({
+          name: form.name,
+          email: form.email,
+          mobileNumber: form.phone,
+          userType,
+          joiningDate: form.joiningDate || undefined,
+        });
+      }
+      if (drawerMode === "edit" && selectedUser) {
+        await updateTeamUser(selectedUser.employeeId, {
+          name: form.name,
+          email: form.email,
+          mobileNumber: form.phone,
+          userType,
+          joiningDate: form.joiningDate || undefined,
+        });
+      }
+      setDrawerMode(null);
+      setPage(1);
+    } catch (error) {
+      setActionError("Failed to save user. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteUser = async (id: string) => {
+    if (!window.confirm("Delete this user?")) return;
+    try {
+      await deleteTeamUser(id);
+      setUsersByTeam((prev) => ({
+        ...prev,
+        [activeTeamTab]: (prev[activeTeamTab] ?? []).filter((row) => row.employeeId !== id),
+      }));
+    } catch (error) {
+      setActionError("Failed to delete user.");
+    }
   };
 
   const showOverlay = drawerMode === "edit" || drawerMode === "add" || drawerMode === "target";
@@ -189,7 +265,15 @@ function TeamManagementPageComponent() {
 
             <section className="mt-4 rounded-md border border-[#d8dde5] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.05)]">
               <div className="flex items-center justify-between gap-2 border-b border-[#e4e7ec] p-3">
-                <div className="flex h-9 w-[200px] items-center gap-2 rounded border border-[#d8dde5] px-3 text-[12px] text-[#9aa2b1]"><Search className="h-4 w-4" />Search</div>
+                <div className="flex h-9 w-[220px] items-center gap-2 rounded border border-[#d8dde5] px-3 text-[12px] text-[#9aa2b1]">
+                  <Search className="h-4 w-4" />
+                  <input
+                    value={searchText}
+                    onChange={(event) => setSearchText(event.target.value)}
+                    placeholder="Search"
+                    className="w-full bg-transparent text-[12px] text-[#1f2533] outline-none placeholder:text-[#9aa2b1]"
+                  />
+                </div>
                 <div className="flex items-center gap-2">
                   <button className="inline-flex h-9 w-9 items-center justify-center rounded border border-[#d8dde5] text-[#98a2b3]"><CalendarDays className="h-4 w-4" /></button>
                   <button className="inline-flex h-9 items-center gap-1 rounded border border-[#d8dde5] px-3 text-[13px] text-[#7a8494]">Customise<ChevronDown className="h-3.5 w-3.5" /></button>
@@ -264,7 +348,7 @@ function TeamManagementPageComponent() {
                                     <div className="absolute right-0 top-7 z-30 w-[124px] overflow-hidden rounded-lg border border-[#d9dce3] bg-white shadow-md">
                                       <button type="button" onClick={(event) => { event.stopPropagation(); openEdit(row); }} className="flex h-8 w-full items-center px-3 text-left text-xs text-[#4b5563] hover:bg-[#f8fafc]">Edit</button>
                                       <button type="button" onClick={(event) => { event.stopPropagation(); openView(row); setActionRowIndex(null); }} className="flex h-8 w-full items-center px-3 text-left text-xs text-[#4b5563] hover:bg-[#f8fafc]">View</button>
-                                      <button type="button" onClick={(event) => event.stopPropagation()} className="flex h-8 w-full items-center px-3 text-left text-xs text-[#ef4444] hover:bg-[#fff5f5]">Delete</button>
+                                      <button type="button" onClick={(event) => { event.stopPropagation(); handleDeleteUser(row.employeeId); }} className="flex h-8 w-full items-center px-3 text-left text-xs text-[#ef4444] hover:bg-[#fff5f5]">Delete</button>
                                     </div>
                                   )}
                                 </div>
@@ -275,7 +359,7 @@ function TeamManagementPageComponent() {
                   </table>
                 </div>
                 <div className="mt-3 flex items-center justify-between px-1 text-[13px] text-[#111827]">
-                  <div>Page 1 of 10</div>
+                  <div>Page {page} of {totalPages}</div>
                   <button className="inline-flex h-8 items-center rounded border border-[#d1d5db] px-3 text-[13px] text-[#6b7280]">Show 10 rows<ChevronDown className="ml-2 h-3.5 w-3.5" /></button>
                 </div>
               </div>
@@ -324,6 +408,7 @@ function TeamManagementPageComponent() {
             <>
               <div className="mt-4">
                 <h3 className="text-[20px] font-semibold text-[#111827]">Basic Details</h3>
+                {actionError ? <div className="mt-2 text-xs text-[#b91c1c]">{actionError}</div> : null}
                 <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
                   {[
                     { key: "email", label: "Email*" },
@@ -342,8 +427,8 @@ function TeamManagementPageComponent() {
               </div>
               <div className="mt-8 grid grid-cols-3 gap-2">
                 <button type="button" className="h-10 rounded border border-[#f2a8a8] text-sm font-semibold text-[#ef4444]">Deactivate User</button>
-                <button type="button" className="h-10 rounded border border-[#f2a8a8] text-sm font-semibold text-[#ef4444]">Delete User</button>
-                <button type="button" onClick={() => setDrawerMode(null)} className="h-10 rounded bg-[#131740] text-sm font-semibold text-white">Save</button>
+                <button type="button" onClick={() => selectedUser && handleDeleteUser(selectedUser.employeeId)} className="h-10 rounded border border-[#f2a8a8] text-sm font-semibold text-[#ef4444]">Delete User</button>
+                <button type="button" onClick={handleSaveUser} className="h-10 rounded bg-[#131740] text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-[#9ca3b1]">{isSaving ? "Saving..." : "Save"}</button>
               </div>
             </>
           )}
@@ -391,4 +476,3 @@ function TeamManagementPageComponent() {
 }
 
 export default dynamic(() => Promise.resolve(TeamManagementPageComponent), { ssr: false });
-

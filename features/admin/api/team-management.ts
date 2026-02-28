@@ -11,10 +11,28 @@ export type TeamUserRow = {
 
 export type TeamUsersResponse = {
   users: TeamUserRow[];
+  pagination: {
+    page: number;
+    perPage: number;
+    total: number;
+    totalPages: number;
+  };
 };
 
 export type TeamUsersQuery = {
   type: number | string;
+  search?: string;
+  page?: number;
+  perPage?: number;
+};
+
+export type TeamUserInput = {
+  name: string;
+  email: string;
+  mobileNumber: string;
+  roleId?: string | number;
+  userType?: string | number;
+  joiningDate?: string;
 };
 
 function toObject(value: unknown): Record<string, unknown> {
@@ -66,6 +84,42 @@ function formatDate(value: unknown): string {
   return `${day}-${month}-${year}`;
 }
 
+function toNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function pickPagination(payload: unknown, fallback: TeamUsersResponse["pagination"]): TeamUsersResponse["pagination"] {
+  const root = toObject(payload);
+  const data = root.data;
+  let pagination: Record<string, unknown> = {};
+
+  if (Array.isArray(data)) {
+    const paginationEntry = data.find((entry) => toObject(entry).id === "pagination");
+    const list = toObject(paginationEntry).list;
+    if (Array.isArray(list) && list.length > 0) {
+      pagination = toObject(list[0]);
+    } else {
+      pagination = toObject(paginationEntry);
+    }
+  } else {
+    pagination = toObject(root.pagination ?? toObject(data).pagination ?? root.meta ?? toObject(data).meta);
+  }
+
+  const page = toNumber(pagination.page ?? pagination.currentPage ?? pagination.current_page) ?? fallback.page;
+  const perPage = toNumber(pagination.perPage ?? pagination.per_page ?? pagination.pageSize) ?? fallback.perPage;
+  const total = toNumber(pagination.total ?? pagination.totalRecords ?? pagination.total_items) ?? fallback.total;
+  const totalPages =
+    toNumber(pagination.totalPages ?? pagination.total_pages) ??
+    (perPage > 0 ? Math.max(1, Math.ceil(total / perPage)) : fallback.totalPages);
+
+  return { page, perPage, total, totalPages };
+}
+
 function mapUserRow(item: unknown): TeamUserRow {
   const row = toObject(item);
   const roleObject = toObject(row.role ?? row.roleName ?? row.userRole);
@@ -87,12 +141,38 @@ function mapUserRow(item: unknown): TeamUserRow {
 }
 
 export async function getTeamUsers(query: TeamUsersQuery): Promise<TeamUsersResponse> {
+  const { type, search = "", page = 1, perPage = 10 } = query;
   const response = await apiRequest<unknown>("/users", {
     method: "GET",
-    query: { type: query.type },
+    query: { type, search, page, per_page: perPage },
   });
 
+  const users = pickList(response).map(mapUserRow);
   return {
-    users: pickList(response).map(mapUserRow),
+    users,
+    pagination: pickPagination(response, {
+      page,
+      perPage,
+      total: users.length,
+      totalPages: 1,
+    }),
   };
+}
+
+export async function createTeamUser(payload: TeamUserInput): Promise<unknown> {
+  return apiRequest("/users", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export async function updateTeamUser(id: string | number, payload: TeamUserInput): Promise<unknown> {
+  return apiRequest(`/users/${id}`, {
+    method: "PUT",
+    body: payload,
+  });
+}
+
+export async function deleteTeamUser(id: string | number): Promise<unknown> {
+  return apiRequest(`/users/${id}`, { method: "DELETE" });
 }

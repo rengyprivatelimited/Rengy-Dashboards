@@ -58,10 +58,10 @@ Legend
 **Page: `/admin/team-management`**
 - [x] Admin route guard
 - [x] API helper exists (`getTeamUsers`)
-- [ ] Replace mock data with API response (API: `GET /api/v1/users?approval=0&type=`)
-- [ ] Search/filter/pagination wired to API (API: `GET /api/v1/users?approval=0&type=`)
-- [ ] Create/Edit/Delete actions wired to API (API: `POST /api/v1/users` / `PUT /api/v1/users/:id` / `DELETE /api/v1/users/:id` not in docs)
-- [ ] Loading/skeleton states (UI only)
+- [x] Replace mock data with API response (API: `GET /api/v1/users?approval=0&type=`)
+- [x] Search/filter/pagination wired to API (API: `GET /api/v1/users?approval=0&type=`)
+- [x] Create/Edit/Delete actions wired to API (API: `POST /api/v1/users` / `PUT /api/v1/users/:id` / `DELETE /api/v1/users/:id`)
+- [x] Loading/skeleton states (UI only)
 
 **Page: `/admin/team-management/team-permissions`**
 - [x] Admin route guard
@@ -150,3 +150,11 @@ Legend
 - [ ] Dropdown list items wired to API (API: not found in `docs/api-reference.md`)
 - [ ] Create/Edit/Delete wired to API (API: not found in `docs/api-reference.md`)
 - [ ] Loading/skeleton states (UI only)
+
+**Missing API Endpoints (Not Found in `docs/api-reference.md`)**
+- `/api/v1/dashboard/:id` (teams cards details, search/time filters, charts) – endpoints or params for teams, charts, and filters are not documented.
+- `/api/v1/dashboard/download` (dashboard export) – not documented.
+- `/api/v1/common/admin/approval` (approve/reject/edit save) – endpoint not documented; currently best-guess POST used.
+- `/api/v1/reports/*` (reports KPIs/tables/filters/export) – no endpoints documented.
+- `/api/v1/support/*` (support list/actions) – no endpoints documented.
+- `/api/v1/settings/dropdown/*` (dropdown list CRUD for settings) – no endpoints documented.
