@@ -574,7 +574,14 @@ function defaultProjectDetailEditForm(customerName: string): ProjectDetailEditFo
   };
 }
 
-export default function LeadsProjectsPage() {
+type LeadsProjectsPageMode = "admin" | "sales-embedded";
+
+type LeadsProjectsPageProps = {
+  mode?: LeadsProjectsPageMode;
+};
+
+export default function LeadsProjectsPage({ mode = "admin" }: LeadsProjectsPageProps) {
+  const isSalesEmbedded = mode === "sales-embedded";
   const [activeTopTab, setActiveTopTab] = useState<"Projects" | "Leads">("Projects");
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [leads, setLeads] = useState<LeadRow[]>([]);
@@ -949,12 +956,13 @@ export default function LeadsProjectsPage() {
   const canNextPage = activeRows.length >= perPage;
 
   return (
-    <div className="min-h-screen bg-[#eceef2] text-[#171b24]">
-      <div className="flex">
-        <RootSidebar activeLabel="Leads & Projects" />
+    <div className={`${isSalesEmbedded ? "min-w-0 w-full" : "min-h-screen bg-[#eceef2]"} text-[#171b24]`}>
+      <div className={isSalesEmbedded ? "min-w-0 w-full" : "flex"}>
+        {!isSalesEmbedded ? <RootSidebar activeLabel="Leads & Projects" /> : null}
 
-        <main className="min-w-0 flex-1">
-          <header className="flex h-12 items-center justify-between border-b border-[#d5d9e2] bg-[#f8f9fb] px-4 lg:px-6">
+        <main className={isSalesEmbedded ? "min-w-0 w-full" : "min-w-0 flex-1"}>
+          {!isSalesEmbedded ? (
+            <header className="flex h-12 items-center justify-between border-b border-[#d5d9e2] bg-[#f8f9fb] px-4 lg:px-6">
             {detailRow ? (
               <div className="flex items-center gap-2 text-sm font-semibold">
                 <button
@@ -994,9 +1002,10 @@ export default function LeadsProjectsPage() {
                 ) : null}
               </div>
             </div>
-          </header>
+            </header>
+          ) : null}
 
-          <div className="p-3 lg:p-4">
+          <div className={isSalesEmbedded ? "min-w-0" : "p-3 lg:p-4"}>
             {detailRow ? (
               <section className="rounded-md border border-[#d8dde5] bg-[#f8f9fb] p-2.5">
                 <div className="rounded-md border border-[#e2e7ef] bg-white p-3.5">
@@ -1473,7 +1482,9 @@ export default function LeadsProjectsPage() {
                     <h1 className="text-[32px] font-medium leading-none text-[#111827]">Leads and Projects</h1>
                     <p className="mt-1 text-sm text-[#7a8494]">Manage your Lead and Projects here</p>
                   </div>
-                  <button type="button" onClick={openCreateDrawer} className="rounded bg-[#131740] px-4 py-2 text-sm font-semibold text-white">Create New Lead</button>
+                  {!isSalesEmbedded ? (
+                    <button type="button" onClick={openCreateDrawer} className="rounded bg-[#131740] px-4 py-2 text-sm font-semibold text-white">Create New Lead</button>
+                  ) : null}
                 </div>
                 {loadError ? (
                   <div className="mt-3 rounded border border-[#f1c1c1] bg-[#fff5f5] px-3 py-2 text-[13px] text-[#b91c1c]">
@@ -1490,23 +1501,25 @@ export default function LeadsProjectsPage() {
                     <button key={tab} type="button" onClick={() => setActiveTopTab(tab)} className={`flex-1 rounded ${activeTopTab === tab ? "bg-[#131740] text-white" : "text-[#3c4655]"}`}>{tab}</button>
                   ))}
                 </div>
-                <section className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-4">
-                  {activeTopTab === "Projects" ? (
-                    <>
-                      <StatCard value={String(projectStats.total)} title="Total Projects" note="From live project list" />
-                      <StatCard value={String(projectStats.completed)} title="Lifetime Completed Projects" note="Derived from project status" />
-                      <StatCard value={String(projectStats.delayed)} title="Delayed Projects" note="Delayed/overdue statuses" />
-                      <StatCard value={`${projectStats.healthPercent}%`} title="Project Delivery Health" note="On-time vs delayed" />
-                    </>
-                  ) : (
-                    <>
-                      <StatCard value={String(leadStats.total)} title="Leads(Lifetime)" note="From live lead list" />
-                      <StatCard value={String(leadStats.newThisMonth)} title="New leads this Month" note="Based on lead created date" />
-                      <StatCard value={`${leadStats.conversionRate}%`} title="Conversion rate" note="Converted vs total leads" />
-                      <StatCard value={String(leadStats.lost)} title="Overall Lead Lost" note="Lost/declined leads" danger />
-                    </>
-                  )}
-                </section>
+                {!isSalesEmbedded ? (
+                  <section className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-4">
+                    {activeTopTab === "Projects" ? (
+                      <>
+                        <StatCard value={String(projectStats.total)} title="Total Projects" note="From live project list" />
+                        <StatCard value={String(projectStats.completed)} title="Lifetime Completed Projects" note="Derived from project status" />
+                        <StatCard value={String(projectStats.delayed)} title="Delayed Projects" note="Delayed/overdue statuses" />
+                        <StatCard value={`${projectStats.healthPercent}%`} title="Project Delivery Health" note="On-time vs delayed" />
+                      </>
+                    ) : (
+                      <>
+                        <StatCard value={String(leadStats.total)} title="Leads(Lifetime)" note="From live lead list" />
+                        <StatCard value={String(leadStats.newThisMonth)} title="New leads this Month" note="Based on lead created date" />
+                        <StatCard value={`${leadStats.conversionRate}%`} title="Conversion rate" note="Converted vs total leads" />
+                        <StatCard value={String(leadStats.lost)} title="Overall Lead Lost" note="Lost/declined leads" danger />
+                      </>
+                    )}
+                  </section>
+                ) : null}
                 <section className="mt-4 rounded-md border border-[#d8dde5] bg-white">
                   <div className="flex items-center justify-between gap-2 border-b border-[#e4e7ec] p-3">
                   <div className="flex h-9 w-[260px] items-center gap-2 rounded border border-[#d8dde5] px-3 text-[12px] text-[#9aa2b1]">
@@ -1604,12 +1617,12 @@ export default function LeadsProjectsPage() {
                     </div>
                   </div>
                   <div className="p-3">
-                    <div className="overflow-x-auto">
+                    <div className="w-full max-w-full overflow-x-auto">
                       {activeTopTab === "Projects" ? (
                         <table className="w-[1600px] table-fixed border-separate border-spacing-0 text-left">
                           <colgroup><col className="w-[42px]" /><col className="w-[90px]" /><col className="w-[90px]" /><col className="w-[90px]" /><col className="w-[120px]" /><col className="w-[110px]" /><col className="w-[100px]" /><col className="w-[100px]" /><col className="w-[110px]" /><col className="w-[130px]" /><col className="w-[120px]" /><col className="w-[100px]" /></colgroup>
                           <thead><tr className="sticky top-0 z-10 h-[46px] bg-[#d8e2df] text-[12px] font-semibold text-[#1f2937]"><th className="rounded-l-md border border-[#e4e7ec] border-r-0 px-2"><input type="checkbox" className="h-4 w-4 rounded border-[#c5ccd8]" /></th><th className="border border-[#e4e7ec] border-r-0 px-2"><div className="flex items-center gap-1">Project ID <ArrowUpDown className="h-3 w-3 text-[#8b96a7]" /></div></th><th className="border border-[#e4e7ec] border-r-0 px-2">Customer</th><th className="border border-[#e4e7ec] border-r-0 px-2">Vendor</th><th className="border border-[#e4e7ec] border-r-0 px-2">Stages</th><th className="border border-[#e4e7ec] border-r-0 px-2">Project values</th><th className="border border-[#e4e7ec] border-r-0 px-2">Amount Paid</th><th className="border border-[#e4e7ec] border-r-0 px-2">Due Amount</th><th className="border border-[#e4e7ec] border-r-0 px-2">Payment type</th><th className="border border-[#e4e7ec] border-r-0 px-2">Project Status</th><th className="border border-[#e4e7ec] border-r-0 px-2">Assigned to</th><th className="rounded-r-md border border-[#e4e7ec] px-2">Action</th></tr></thead>
-                          <tbody>{isLoading ? Array.from({ length: 6 }).map((_, idx) => (<tr key={`proj-skel-${idx}`} className="h-[56px] text-[12px] text-[#111827]">{Array.from({ length: 12 }).map((__, colIdx) => (<td key={`proj-skel-${idx}-${colIdx}`} className="border border-t-0 border-[#e4e7ec] px-2"><div className="h-3 w-full max-w-[140px] rounded bg-[#e3e7ee]" /></td>))}</tr>)) : projects.map((row, index) => (<tr key={`${row.id}-${index}`} onClick={() => openViewDrawer(row, index)} className="h-[56px] cursor-pointer text-[12px] text-[#111827] hover:bg-[#f8fbff]"><td className="border border-t-0 border-[#e4e7ec] px-2"><input type="checkbox" onClick={(event) => event.stopPropagation()} className="h-4 w-4 rounded border-[#c5ccd8]" /></td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.id}</td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.customer}</td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.vendor}</td><td className="border border-t-0 border-[#e4e7ec] px-2"><span className={`rounded px-2 py-0.5 text-[10px] font-semibold ${stageClass(row.stage)}`}>{row.stage}</span></td><td className="border border-t-0 border-[#e4e7ec] px-2 font-semibold">{row.projectValue}</td><td className="border border-t-0 border-[#e4e7ec] px-2 font-semibold">{row.amountPaid}</td><td className="border border-t-0 border-[#e4e7ec] px-2 font-semibold">{row.dueAmount}</td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.paymentType}</td><td className="border border-t-0 border-[#e4e7ec] px-2"><div className="flex items-center gap-3"><div className="h-4 w-[76px] overflow-hidden rounded-full bg-[#d9dde5]"><div className="h-full rounded-full bg-[#172b63]" style={{ width: `${row.progress}%` }} /></div><span className="text-[16px] font-semibold text-[#1f2937]">{row.progress}%</span></div></td><td className="border border-t-0 border-[#e4e7ec] px-2"><div className="inline-flex items-center gap-2 rounded border border-[#d6dbe7] bg-[#f4f6fb] px-2 py-1">{row.assignedTo}<ChevronDown className="h-3.5 w-3.5 text-[#798398]" /></div></td><td className="border border-t-0 border-[#e4e7ec] px-2"><div className="flex items-center gap-1"><button type="button" onClick={(e) => e.stopPropagation()} className="inline-flex h-6 w-6 items-center justify-center"><MessageSquareText className="h-3.5 w-3.5 text-[#9aa2b1]" /></button><button type="button" onClick={(event) => { event.stopPropagation(); handleDprDownload(row); }} className="inline-flex h-6 w-6 items-center justify-center"><Download className="h-3.5 w-3.5 text-[#111827]" /></button><button type="button" onClick={(event) => { event.stopPropagation(); handleToggleFavorite(row); }} className="inline-flex h-6 w-6 items-center justify-center"><Star className="h-3.5 w-3.5 text-[#f59e0b]" /></button><button type="button" onClick={(event) => { event.stopPropagation(); openEditDrawer(row, index); }} className="inline-flex h-6 w-6 items-center justify-center"><Pencil className="h-3.5 w-3.5 text-[#111827]" /></button><button type="button" onClick={(e) => e.stopPropagation()} className="inline-flex h-6 w-6 items-center justify-center"><MoreVertical className="h-3.5 w-3.5 text-[#111827]" /></button></div></td></tr>))}</tbody>
+                          <tbody>{isLoading ? Array.from({ length: 6 }).map((_, idx) => (<tr key={`proj-skel-${idx}`} className="h-[56px] text-[12px] text-[#111827]">{Array.from({ length: 12 }).map((__, colIdx) => (<td key={`proj-skel-${idx}-${colIdx}`} className="border border-t-0 border-[#e4e7ec] px-2"><div className="h-3 w-full max-w-[140px] rounded bg-[#e3e7ee]" /></td>))}</tr>)) : projects.map((row, index) => (<tr key={`${row.id}-${index}`} onClick={() => openViewDrawer(row, index)} className="h-[56px] cursor-pointer text-[12px] text-[#111827] hover:bg-[#f8fbff]"><td className="border border-t-0 border-[#e4e7ec] px-2"><input type="checkbox" onClick={(event) => event.stopPropagation()} className="h-4 w-4 rounded border-[#c5ccd8]" /></td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.id}</td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.customer}</td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.vendor}</td><td className="border border-t-0 border-[#e4e7ec] px-2"><span className={`rounded px-2 py-0.5 text-[10px] font-semibold ${stageClass(row.stage)}`}>{row.stage}</span></td><td className="border border-t-0 border-[#e4e7ec] px-2 font-semibold">{row.projectValue}</td><td className="border border-t-0 border-[#e4e7ec] px-2 font-semibold">{row.amountPaid}</td><td className="border border-t-0 border-[#e4e7ec] px-2 font-semibold">{row.dueAmount}</td><td className="border border-t-0 border-[#e4e7ec] px-2">{row.paymentType}</td><td className="border border-t-0 border-[#e4e7ec] px-2"><div className="flex items-center gap-3"><div className="h-4 w-[76px] overflow-hidden rounded-full bg-[#d9dde5]"><div className="h-full rounded-full bg-[#172b63]" style={{ width: `${row.progress}%` }} /></div><span className="text-[16px] font-semibold text-[#1f2937]">{row.progress}%</span></div></td><td className="border border-t-0 border-[#e4e7ec] px-2"><div className="inline-flex items-center gap-2 rounded border border-[#d6dbe7] bg-[#f4f6fb] px-2 py-1">{row.assignedTo}<ChevronDown className="h-3.5 w-3.5 text-[#798398]" /></div></td><td className="border border-t-0 border-[#e4e7ec] px-2"><div className="flex items-center gap-1"><button type="button" onClick={(e) => e.stopPropagation()} className="inline-flex h-6 w-6 items-center justify-center"><MessageSquareText className="h-3.5 w-3.5 text-[#9aa2b1]" /></button><button type="button" onClick={(event) => { event.stopPropagation(); handleDprDownload(row); }} className="inline-flex h-6 w-6 items-center justify-center"><Download className="h-3.5 w-3.5 text-[#111827]" /></button><button type="button" onClick={(event) => { event.stopPropagation(); handleToggleFavorite(row); }} className="inline-flex h-6 w-6 items-center justify-center"><Star className="h-3.5 w-3.5 text-[#f59e0b]" /></button>{!isSalesEmbedded ? (<button type="button" onClick={(event) => { event.stopPropagation(); openEditDrawer(row, index); }} className="inline-flex h-6 w-6 items-center justify-center"><Pencil className="h-3.5 w-3.5 text-[#111827]" /></button>) : null}<button type="button" onClick={(e) => e.stopPropagation()} className="inline-flex h-6 w-6 items-center justify-center"><MoreVertical className="h-3.5 w-3.5 text-[#111827]" /></button></div></td></tr>))}</tbody>
                         </table>
                       ) : (
                         <table className="w-[1300px] table-fixed border-separate border-spacing-0 text-left">

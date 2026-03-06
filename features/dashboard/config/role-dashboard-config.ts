@@ -36,7 +36,7 @@ export const NAV_BY_ROLE: Record<RoleSlug, string[]> = {
   ],
   "net-metering-team": ["Dashboard", "Projects", "Reports", "Tickets & Alerts", "Contact"],
   "loan-team": ["Dashboard", "Loan Requests", "Reports", "Ticket & Alerts", "Vendor Management", "Fin-Tech Partners"],
-  "sales-team": ["Dashboard", "Leads", "Follow Ups", "Reports", "Tickets"],
+  "sales-team": ["Dashboard", "Leads", "Reports", "Tickets"],
   "amc-team": ["Dashboard", "AMC Requests", "Subscribers", "Technicians", "Tickets & Alerts", "Reports"],
   "finance-team": ["Dashboard", "Payments", "Projects", "Vendor Disbursal", "Reports", "Tickets & Alerts", "Contact"],
   "supply-chain-team": [
