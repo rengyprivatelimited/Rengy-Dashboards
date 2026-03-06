@@ -15,15 +15,28 @@ import { AdminDashboardStat } from "@/features/dashboard/api/admin-dashboard";
 import { getAdminDashboardDataWithToken } from "@/features/dashboard/api/admin-dashboard";
 
 const teams = [
-  { name: "Sales Team", open: 12, new: 12, pending: 12 },
-  { name: "Design Team", open: 12, new: 12, pending: 13 },
-  { name: "Finance Team", open: 12, new: 13, pending: 12 },
-  { name: "Loan Team", open: 12, new: 12, pending: 13 },
-  { name: "Vendor Team", open: 12, new: 12, pending: 14 },
-  { name: "Ops Team", open: 12, new: 12, pending: 12 },
+  { name: "Sales Team", href: "/sales-team/dashboard", open: 12, new: 12, pending: 12 },
+  { name: "Net Metering Team", href: "/net-metering-team/dashboard", open: 12, new: 12, pending: 12 },
+  { name: "Loan Team", href: "/loan-team/dashboard", open: 12, new: 12, pending: 13 },
+  { name: "Design Team", href: "/design-team/dashboard", open: 12, new: 12, pending: 13 },
+  { name: "Finance Team", href: "/finance-team/dashboard", open: 12, new: 13, pending: 12 },
+  { name: "Operations Team", href: "/operations-team/dashboard", open: 12, new: 12, pending: 12 },
+  { name: "Supply Chain Team", href: "/supply-chain-team/dashboard", open: 12, new: 12, pending: 14 },
+  { name: "AMC Team", href: "/amc-team/dashboard", open: 12, new: 12, pending: 12 },
 ];
 
 const topPerformers = [1, 2, 3, 4, 5];
+const milestoneMaxValue = 60;
+const milestoneTicks = [10, 20, 30, 40, 50, 60];
+const milestoneFunnelData = [
+  { stage: "New Lead", value: 38, color: "bg-[#c7d8d5]" },
+  { stage: "Site Survey done", value: 52, color: "bg-[#5bcaa5]" },
+  { stage: "DPR Approval", value: 28, color: "bg-[#b5d8cb]" },
+  { stage: "Procurement", value: 36, color: "bg-[#8ccdb6]" },
+  { stage: "Installation", value: 44, color: "bg-[#6fd4b0]"},
+  { stage: "Net metering", value: 49, color: "bg-[#5bcaa5]" },
+  { stage: "Project Handover", value: 34, color: "bg-[#579f86]" },
+];
 
 function StatCard({
   value,
@@ -43,7 +56,7 @@ function StatCard({
           </div>
           <div className="mt-1.5 text-sm font-semibold text-[#202225]">{title}</div>
         </div>
-        <div className="mt-2 h-9 w-12 rounded-r-full border-b-2 border-r-2 border-[#43d296]" />
+        <div className="mt-2 h-10 w-16 bg-[url('/chart.png')] bg-contain bg-center bg-no-repeat" />
       </div>
       <div className="mt-1.5 text-xs text-[#8c95a3]">{note}</div>
     </div>
@@ -52,40 +65,46 @@ function StatCard({
 
 function TeamCard({
   name,
+  href,
   open,
   newCount,
   pending,
 }: {
   name: string;
+  href: string;
   open: number;
   newCount: number;
   pending: number;
 }) {
   return (
-    <div className="rounded-md border border-[#d7dde7] bg-gradient-to-b from-[#edf1fb] to-[#f7f9ff] p-3">
+    <div className="w-[280px] shrink-0 rounded-md border border-[#d7dde7] bg-gradient-to-b from-[#edf1fb] to-[#f7f9ff] p-3">
       <div className="flex items-center gap-1.5 text-sm font-semibold text-[#1f2b46]">
         <CircleDot className="h-4 w-4 text-[#5b74c6]" />
         <span>{name}</span>
       </div>
-      <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-[#5b6475]">
-        <div>
+      <div className="mt-3 grid grid-cols-3 gap-3 text-xs text-[#5b6475]">
+        <div className="min-w-0">
           <div className="text-sm font-semibold text-[#1a1f2c]">{open}</div>
-          <div>Open</div>
+          <div className="mt-0.5 whitespace-normal break-words text-[11px] leading-4">Open</div>
         </div>
-        <div>
+        <div className="min-w-0">
           <div className="text-sm font-semibold text-[#1a1f2c]">{newCount}</div>
-          <div>New Service</div>
+          <div className="mt-0.5 whitespace-normal break-words text-[11px] leading-4">New Service</div>
         </div>
-        <div>
+        <div className="min-w-0">
           <div className="text-sm font-semibold text-[#1a1f2c]">{pending}</div>
-          <div>Pending Up</div>
+          <div className="mt-0.5 whitespace-normal break-words text-[11px] leading-4">Pending Up</div>
         </div>
       </div>
       <div className="mt-3 flex items-center justify-between border-t border-[#cfd7e6] pt-2">
         <span className="text-xs font-semibold text-[#1f2b46]">View Details</span>
-        <button className="rounded-sm bg-[#111433] px-2 py-1 text-xs text-white">
+        <Link
+          href={href}
+          aria-label={`Go to ${name} dashboard`}
+          className="rounded-sm bg-[#111433] px-2 py-1 text-xs text-white"
+        >
           <ChevronRight className="h-3.5 w-3.5" />
-        </button>
+        </Link>
       </div>
     </div>
   );
@@ -158,7 +177,7 @@ export function AdminDashboardLegacy({ stats }: AdminDashboardLegacyProps) {
     <div className="min-h-screen bg-[#eceef2] text-[#171b24]">
       <div className="flex">
         <RootSidebar activeLabel="Dashboard" />
-        <main className="flex-1">
+        <main className="min-w-0 flex-1 overflow-x-hidden">
           <header className="flex h-12 items-center justify-between border-b border-[#d5d9e2] bg-[#f8f9fb] px-4 lg:px-6">
             <div className="text-base font-semibold">Admin</div>
             <div className="flex items-center gap-3">
@@ -175,7 +194,7 @@ export function AdminDashboardLegacy({ stats }: AdminDashboardLegacyProps) {
             </div>
           </header>
 
-          <div className="flex flex-col gap-4 p-3 lg:p-4 2xl:flex-row">
+          <div className="flex min-w-0 flex-col gap-4 p-3 lg:p-4 xl:flex-row">
             <section className="min-w-0 flex-1">
               <h1 className="text-4xl font-medium leading-none text-[#1d2028] lg:text-5xl">Hi Akhil</h1>
 
@@ -185,7 +204,7 @@ export function AdminDashboardLegacy({ stats }: AdminDashboardLegacyProps) {
                 ))}
               </div>
 
-              <div className="mt-4 rounded-md border border-[#d7dde7] bg-white p-3">
+              <div className="mt-4 min-w-0 overflow-hidden rounded-md border border-[#d7dde7] bg-white p-3">
                 <div className="flex items-center justify-between">
                   <h2 className="text-lg font-semibold text-[#202433]">Teams</h2>
                   <div className="flex items-center gap-2 text-xs text-[#7f8898]">
@@ -195,16 +214,19 @@ export function AdminDashboardLegacy({ stats }: AdminDashboardLegacyProps) {
                     </button>
                   </div>
                 </div>
-                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-                  {teams.map((team) => (
-                    <TeamCard
-                      key={team.name}
-                      name={team.name}
-                      open={team.open}
-                      newCount={team.new}
-                      pending={team.pending}
-                    />
-                  ))}
+                <div className="mt-3 min-w-0 w-full max-w-full overflow-x-auto pb-1">
+                  <div className="inline-flex gap-2 whitespace-nowrap">
+                    {teams.map((team) => (
+                      <TeamCard
+                        key={team.name}
+                        name={team.name}
+                        href={team.href}
+                        open={team.open}
+                        newCount={team.new}
+                        pending={team.pending}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -216,19 +238,32 @@ export function AdminDashboardLegacy({ stats }: AdminDashboardLegacyProps) {
                       Last 7 Days
                     </button>
                   </div>
-                  <div className="mt-4 space-y-2">
-                    {[72, 64, 54, 46, 37].map((w, i) => (
-                      <div key={w} className="flex items-center gap-2">
-                        <div
-                          className="h-7 rounded-sm bg-gradient-to-r from-[#58ddb0] to-[#9ae5ca]"
-                          style={{ width: `${w}%` }}
-                        />
-                        <span className="text-xs text-[#8a93a2]">Stage {i + 1}</span>
+                  <div className="mt-4 overflow-x-auto">
+                    <div className="min-w-[660px]">
+                      <div className="border-l border-[#cfd6e4] pl-3">
+                        <div className="space-y-2">
+                          {milestoneFunnelData.map((item) => {
+                            const width = Math.max(0, Math.min(100, (item.value / milestoneMaxValue) * 100));
+                            return (
+                              <div key={item.stage} className="flex items-center gap-3">
+                                <div
+                                  className={`h-12 rounded-sm ${item.color}`}
+                                  style={{ width: `${width}%` }}
+                                />
+                                <span className="whitespace-nowrap text-lg text-[#62728a]">{item.stage}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="mt-4 border-t border-[#cfd6e4] pt-2">
+                          <div className="grid grid-cols-6 text-sm text-[#7f8898]">
+                            {milestoneTicks.map((tick) => (
+                              <span key={tick}>{tick}</span>
+                            ))}
+                          </div>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                  <div className="mt-5 h-24 rounded-md bg-[#f5f7fb] px-3 py-2">
-                    <div className="text-xs text-[#9aa2b0]">10 20 30 40 50 60</div>
+                    </div>
                   </div>
                 </div>
 
@@ -323,7 +358,7 @@ export function AdminDashboardLegacy({ stats }: AdminDashboardLegacyProps) {
               </div>
             </section>
 
-            <aside className="w-full rounded-md border border-[#d7dde7] bg-[#f9fafc] p-3 2xl:w-[300px]">
+            <aside className="w-full rounded-md border border-[#d7dde7] bg-[#f9fafc] p-3 xl:w-[300px] xl:shrink-0">
               <div className="text-lg font-semibold">Quick Actions</div>
               <div className="mt-2 space-y-1.5">
                 <button className="w-full rounded-sm bg-[#171b45] px-3 py-2 text-sm font-semibold text-white">

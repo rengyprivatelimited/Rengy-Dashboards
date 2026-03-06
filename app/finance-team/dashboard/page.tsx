@@ -1,7 +1,7 @@
 import { RoleDashboard } from "@/features/dashboard/components";
-import { requireRole } from "@/features/auth/server-guard";
+import { requireRoleOrAdmin } from "@/features/auth/server-guard";
 
 export default async function RoleDashboardPage() {
-  const { userName } = await requireRole("finance-team");
+  const { userName } = await requireRoleOrAdmin("finance-team");
   return <RoleDashboard role="finance-team" userName={userName} />;
 }

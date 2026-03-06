@@ -10,7 +10,7 @@ export type ProjectListRow = {
   amountPaid: string;
   dueAmount: string;
   paymentType: string;
-  paymentStatus: string;
+  progress: number;
   assignedTo: string;
   statusRaw?: string;
 };
@@ -106,6 +106,12 @@ function formatAmount(value: unknown): string {
   return `Rs ${numeric.toLocaleString("en-IN")}`;
 }
 
+function normalizeProgress(value: unknown): number {
+  const numeric = toNumber(value);
+  if (numeric === null) return 0;
+  return Math.max(0, Math.min(100, Math.round(numeric)));
+}
+
 function toStringOrNull(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   const next = String(value).trim();
@@ -118,6 +124,11 @@ function firstNonEmptyString(...values: unknown[]): string | null {
     if (text) return text;
   }
   return null;
+}
+
+function pickNestedName(value: unknown): string | null {
+  const obj = toObject(value);
+  return firstNonEmptyString(obj.name, obj.stageName, obj.statusName, obj.title, obj.label);
 }
 
 function mapLeadMilestone(value: string): LeadListRow["milestone"] {
@@ -133,11 +144,25 @@ function mapProjectRow(item: unknown): ProjectListRow {
   const customer = toObject(row.customer ?? row.customerDetails ?? row.lead);
   const vendor = toObject(row.vendor ?? row.vendorDetails ?? row.assignedVendor);
 
-  const stageName = firstNonEmptyString(row.stageName, row.stage, row.projectStage, row.statusName, row.status);
+  const stageName = firstNonEmptyString(
+    row.stageName,
+    pickNestedName(row.stage),
+    row.stage,
+    pickNestedName(row.projectStage),
+    row.projectStage,
+    row.statusName,
+    row.status,
+  );
   const assignedTo = firstNonEmptyString(row.assignedTo, row.assigneeName, row.vendorAssigned, vendor.name, row.vendorName);
   const projectId =
     firstNonEmptyString(row.projectCode, row.projectId, row.referenceNo, row.ticketId) ?? `#PRJ-${toStringValue(row.id, "0")}`;
   const rawId = row.id ?? row.projectId ?? row.projectCode ?? row.referenceNo;
+  const projectValueRaw = firstNonEmptyString(row.projectValue, row.projectCost, row.totalAmount, row.amount);
+  const balanceAmountRaw = firstNonEmptyString(row.dueAmount, row.balanceAmount, row.remainingAmount);
+  const projectValueNumeric = toNumber(projectValueRaw);
+  const balanceAmountNumeric = toNumber(balanceAmountRaw);
+  const computedAmountPaid =
+    projectValueNumeric !== null && balanceAmountNumeric !== null ? projectValueNumeric - balanceAmountNumeric : null;
 
   return {
     id: projectId,
@@ -147,13 +172,13 @@ function mapProjectRow(item: unknown): ProjectListRow {
     ),
     vendor: toStringValue(firstNonEmptyString(row.vendorName, vendor.name)),
     stage: toStringValue(stageName),
-    projectValue: formatAmount(firstNonEmptyString(row.projectValue, row.projectCost, row.totalAmount, row.amount)),
+    projectValue: formatAmount(projectValueRaw),
     amountPaid: formatAmount(
-      firstNonEmptyString(latestPayment.amount, latestPayment.paidAmount, row.amountPaid, row.paidAmount),
+      computedAmountPaid ?? firstNonEmptyString(latestPayment.amount, latestPayment.paidAmount, row.amountPaid, row.paidAmount),
     ),
-    dueAmount: formatAmount(firstNonEmptyString(row.dueAmount, row.balanceAmount, row.remainingAmount)),
+    dueAmount: formatAmount(balanceAmountRaw),
     paymentType: toStringValue(firstNonEmptyString(latestPayment.paymentType, latestPayment.mode, row.paymentType)),
-    paymentStatus: toStringValue(firstNonEmptyString(latestPayment.statusName, latestPayment.status, row.paymentStatus)),
+    progress: normalizeProgress(firstNonEmptyString(row.progress, row.projectProgress, row.statusPercent)),
     assignedTo: toStringValue(assignedTo),
     statusRaw: toStringValue(stageName),
   };
@@ -162,7 +187,14 @@ function mapProjectRow(item: unknown): ProjectListRow {
 function mapLeadRow(item: unknown): LeadListRow {
   const row = toObject(item);
   const vendor = toObject(row.vendor ?? row.vendorDetails ?? row.assignedVendor);
-  const stageName = firstNonEmptyString(row.stageName, row.stage, row.statusName, row.status, row.milestone);
+  const stageName = firstNonEmptyString(
+    row.stageName,
+    pickNestedName(row.stage),
+    row.stage,
+    row.statusName,
+    row.status,
+    row.milestone,
+  );
   const rawId = row.id ?? row.leadId ?? row.leadCode ?? row.referenceNo ?? row.ticketId;
 
   return {

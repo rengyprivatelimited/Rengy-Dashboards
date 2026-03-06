@@ -274,7 +274,7 @@ function OperationsKpiCard({ item }: { item: OperationsKpi }) {
           {renderValue()}
           <div className="mt-1.5 text-sm font-semibold leading-[1.2] text-[#202225]">{item.title}</div>
         </div>
-        <div className="mt-2 h-10 w-16 rounded-r-full border-b-2 border-r-2 border-[#37cf95]" />
+        <div className="mt-2 h-10 w-16 bg-[url('/chart.png')] bg-contain bg-center bg-no-repeat" />
       </div>
       <p className={`mt-1.5 text-xs ${item.danger ? "text-[#ef4444]" : "text-[#8c95a3]"}`}>{item.note}</p>
     </article>
@@ -1122,7 +1122,9 @@ function SalesKpiCard({ item }: { item: SalesKpi }) {
           <div className="mt-2 text-[14px] font-medium leading-[1.25] text-[#1f2738]">{item.title}</div>
           <div className={`mt-2 text-[10px] font-semibold ${item.danger ? "text-[#ef4444]" : "text-[#16a34a]"}`}>{item.note}</div>
         </div>
-        <div className={`mt-2 h-10 w-16 rounded-r-full border-b-2 border-r-2 ${item.danger ? "border-[#f1a5a5]" : "border-[#37cf95]"}`} />
+        <div
+          className={`mt-2 h-10 w-16 ${item.danger ? "rounded-r-full border-b-2 border-r-2 border-[#f1a5a5]" : "bg-[url('/chart.png')] bg-contain bg-center bg-no-repeat"}`}
+        />
       </div>
     </article>
   );
@@ -1412,7 +1414,7 @@ function AmcStatCard({ item }: { item: { value: string; title: string; note: str
           <div className="mt-2 text-[14px] font-medium leading-[1.2] text-[#1f2738]">{item.title}</div>
           <div className="mt-2 text-[10px] font-semibold text-[#16a34a]">{item.note}</div>
         </div>
-        <div className="mt-2 h-10 w-16 rounded-r-full border-b-2 border-r-2 border-[#37cf95]" />
+        <div className="mt-2 h-10 w-16 bg-[url('/chart.png')] bg-contain bg-center bg-no-repeat" />
       </div>
     </article>
   );
@@ -1677,7 +1679,9 @@ function FinanceKpiCard({ item }: { item: FinanceKpi }) {
           <div className="mt-2 text-[14px] font-medium leading-[1.25] text-[#1f2738]">{item.title}</div>
           <div className={`mt-2 text-[10px] font-semibold ${item.danger ? "text-[#ef4444]" : "text-[#16a34a]"}`}>{item.note}</div>
         </div>
-        <div className={`mt-2 h-10 w-16 rounded-r-full border-b-2 border-r-2 ${item.danger ? "border-[#f1a5a5]" : "border-[#37cf95]"}`} />
+        <div
+          className={`mt-2 h-10 w-16 ${item.danger ? "rounded-r-full border-b-2 border-r-2 border-[#f1a5a5]" : "bg-[url('/chart.png')] bg-contain bg-center bg-no-repeat"}`}
+        />
       </div>
     </article>
   );
@@ -2200,7 +2204,7 @@ function DesignKpiCard({ item }: { item: DesignKpi }) {
           <div className="mt-2 text-[14px] font-medium leading-[1.2] text-[#1f2738]">{item.title}</div>
           <div className={`mt-2 text-[10px] font-semibold ${item.danger ? "text-[#ef4444]" : "text-[#6e778a]"}`}>{item.note}</div>
         </div>
-        <div className={`${item.danger ? "hidden" : "mt-2 h-10 w-16 rounded-r-full border-b-2 border-r-2 border-[#37cf95]"}`} />
+        <div className={`${item.danger ? "hidden" : "mt-2 h-10 w-16 bg-[url('/chart.png')] bg-contain bg-center bg-no-repeat"}`} />
       </div>
     </article>
   );
@@ -2865,4 +2869,3 @@ export function RoleDashboard({ role, userName, section }: RoleDashboardProps) {
     </div>
   );
 }
-

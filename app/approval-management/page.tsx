@@ -105,7 +105,7 @@ function StatCard({
           </div>
           <div className="mt-1.5 text-[20px] font-medium leading-[1] text-[#111827]">{title}</div>
         </div>
-        <div className="mt-2 h-9 w-16 rounded-r-full border-b-2 border-r-2 border-[#38ce91]" />
+        <div className="mt-2 h-10 w-16 bg-[url('/chart.png')] bg-contain bg-center bg-no-repeat" />
       </div>
       <p className={`mt-1.5 text-[13px] ${emphasized ? "text-[#ef4444]" : "text-[#8e95a3]"}`}>{note}</p>
     </div>

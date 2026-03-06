@@ -23,6 +23,27 @@ export async function requireRole(expectedRole: RoleSlug) {
   return { userName };
 }
 
+export async function requireRoleOrAdmin(expectedRole: RoleSlug) {
+  const cookieStore = await cookies();
+  const isAuth = cookieStore.get("rengy_auth")?.value === "1";
+  const userRole = cookieStore.get("rengy_role")?.value;
+
+  if (!isAuth) {
+    redirect("/login");
+  }
+
+  if (!userRole || !isRoleSlug(userRole)) {
+    redirect("/login");
+  }
+
+  if (userRole !== expectedRole && userRole !== "admin") {
+    redirect(getDashboardPath(userRole));
+  }
+
+  const userName = decodeURIComponent(cookieStore.get("rengy_name")?.value ?? "Akhil");
+  return { userName };
+}
+
 export async function parseAndValidateRole(params: Promise<{ role: string }>) {
   const { role } = await params;
   if (!isRoleSlug(role)) {
@@ -30,4 +51,3 @@ export async function parseAndValidateRole(params: Promise<{ role: string }>) {
   }
   return role;
 }
-

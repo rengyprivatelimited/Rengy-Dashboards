@@ -1,7 +1,7 @@
 import { RoleDashboard } from "@/features/dashboard/components";
-import { requireRole } from "@/features/auth/server-guard";
+import { requireRoleOrAdmin } from "@/features/auth/server-guard";
 
 export default async function RoleDashboardPage() {
-  const { userName } = await requireRole("net-metering-team");
+  const { userName } = await requireRoleOrAdmin("net-metering-team");
   return <RoleDashboard role="net-metering-team" userName={userName} />;
 }
