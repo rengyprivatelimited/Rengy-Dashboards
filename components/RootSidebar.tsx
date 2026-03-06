@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, LayoutDashboard, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type RootSidebarProps = {
   activeLabel: string;
@@ -11,10 +11,10 @@ type RootSidebarProps = {
 
 const leftMenu = [
   { label: "Dashboard", href: "/admin/dashboard", icon: <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M6 2H2.66667C2.29848 2 2 2.29848 2 2.66667V7.33333C2 7.70152 2.29848 8 2.66667 8H6C6.36819 8 6.66667 7.70152 6.66667 7.33333V2.66667C6.66667 2.29848 6.36819 2 6 2Z" stroke="white" strokeLinecap="round" strokeLinejoin="round"/>
-<path d="M13.332 2H9.9987C9.63051 2 9.33203 2.29848 9.33203 2.66667V4.66667C9.33203 5.03486 9.63051 5.33333 9.9987 5.33333H13.332C13.7002 5.33333 13.9987 5.03486 13.9987 4.66667V2.66667C13.9987 2.29848 13.7002 2 13.332 2Z" stroke="white" strokeLinecap="round" strokeLinejoin="round"/>
-<path d="M13.332 8H9.9987C9.63051 8 9.33203 8.29848 9.33203 8.66667V13.3333C9.33203 13.7015 9.63051 14 9.9987 14H13.332C13.7002 14 13.9987 13.7015 13.9987 13.3333V8.66667C13.9987 8.29848 13.7002 8 13.332 8Z" stroke="white" strokeLinecap="round" strokeLinejoin="round"/>
-<path d="M6 10.668H2.66667C2.29848 10.668 2 10.9664 2 11.3346V13.3346C2 13.7028 2.29848 14.0013 2.66667 14.0013H6C6.36819 14.0013 6.66667 13.7028 6.66667 13.3346V11.3346C6.66667 10.9664 6.36819 10.668 6 10.668Z" stroke="white" strokeLinecap="round" strokeLinejoin="round"/>
+<path d="M6 2H2.66667C2.29848 2 2 2.29848 2 2.66667V7.33333C2 7.70152 2.29848 8 2.66667 8H6C6.36819 8 6.66667 7.70152 6.66667 7.33333V2.66667C6.66667 2.29848 6.36819 2 6 2Z" stroke="#717187" strokeLinecap="round" strokeLinejoin="round"/>
+<path d="M13.332 2H9.9987C9.63051 2 9.33203 2.29848 9.33203 2.66667V4.66667C9.33203 5.03486 9.63051 5.33333 9.9987 5.33333H13.332C13.7002 5.33333 13.9987 5.03486 13.9987 4.66667V2.66667C13.9987 2.29848 13.7002 2 13.332 2Z" stroke="#717187" strokeLinecap="round" strokeLinejoin="round"/>
+<path d="M13.332 8H9.9987C9.63051 8 9.33203 8.29848 9.33203 8.66667V13.3333C9.33203 13.7015 9.63051 14 9.9987 14H13.332C13.7002 14 13.9987 13.7015 13.9987 13.3333V8.66667C13.9987 8.29848 13.7002 8 13.332 8Z" stroke="#717187" strokeLinecap="round" strokeLinejoin="round"/>
+<path d="M6 10.668H2.66667C2.29848 10.668 2 10.9664 2 11.3346V13.3346C2 13.7028 2.29848 14.0013 2.66667 14.0013H6C6.36819 14.0013 6.66667 13.7028 6.66667 13.3346V11.3346C6.66667 10.9664 6.36819 10.668 6 10.668Z" stroke="#717187" strokeLinecap="round" strokeLinejoin="round"/>
 </svg>
 
  },
@@ -122,6 +122,18 @@ export function RootSidebar({ activeLabel }: RootSidebarProps) {
     if (typeof window === "undefined") return false;
     return localStorage.getItem("rengy-sidebar-collapsed") === "1";
   });
+  const [forceCompact, setForceCompact] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1279px)");
+    const handleChange = () => setForceCompact(media.matches);
+    handleChange();
+
+    media.addEventListener("change", handleChange);
+    return () => media.removeEventListener("change", handleChange);
+  }, []);
+
+  const isCollapsed = collapsed || forceCompact;
 
   const toggleSidebar = () => {
     setCollapsed((prev) => {
@@ -139,13 +151,13 @@ export function RootSidebar({ activeLabel }: RootSidebarProps) {
 
   return (
     <aside
-      className={`hidden border-r border-[#d5d9e2] bg-[#f6f8fb] px-3 py-4 transition-all duration-200 xl:block ${
-        collapsed ? "w-[76px]" : "w-[240px]"
+      className={`block border-r border-[#d5d9e2] bg-[#f6f8fb] px-3 py-4 transition-all duration-200 ${
+        isCollapsed ? "w-[76px]" : "w-[240px]"
       }`}
     >
       <div className="flex items-center justify-between border-b border-[#dbe1eb] pb-2">
         <span className="text-lg font-bold tracking-wide">
-          {!collapsed ? (
+          {!isCollapsed ? (
             <svg width="90" height="22" viewBox="0 0 90 22" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M15.0173 4.50577H3.00289V16.5173L0 13.5144V1.50001H10.5116V0L15.0173 4.50577Z" fill="#131337"/>
 <path d="M3.00391 16.5155H15.0183V4.50391L18.0212 7.5068V19.5212H7.50969V21.0212L3.00391 16.5155Z" fill="#131337"/>
@@ -166,40 +178,42 @@ export function RootSidebar({ activeLabel }: RootSidebarProps) {
 
           )}
         </span>
-        <button
-          onClick={toggleSidebar}
-          className="rounded border border-[#cfd6e2] p-1 text-[#5f6878] hover:bg-[#edf1f7]"
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-        </button>
+        {!forceCompact ? (
+          <button
+            onClick={toggleSidebar}
+            className="rounded border border-[#cfd6e2] p-1 text-[#5f6878] hover:bg-[#edf1f7]"
+            aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {isCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+          </button>
+        ) : null}
       </div>
       <ul className="mt-4 space-y-1.5 text-sm">
         {leftMenu.map((item) => {
           const active = isMenuActive(item.label, item.href);
-          const showChildren = !collapsed && !!item.children && pathname.startsWith(item.href);
+          const showChildren = !isCollapsed && !!item.children && pathname.startsWith(item.href);
           return (
             <li key={item.label}>
               <Link
                 href={item.href}
                 title={item.label}
                 className={`flex items-center rounded-sm py-2 ${
-                  collapsed ? "justify-center px-2" : "justify-between px-3"
+                  isCollapsed ? "justify-center px-2" : "justify-between px-3"
                 } ${
                   active
                     ? "bg-[#e4f6ef] font-semibold text-[#1e9b72]"
                     : "text-[#596274] hover:bg-[#edf1f7]"
                 }`}
               >
-                <span className={`flex items-center ${collapsed ? "justify-center" : "gap-1.5"}`}>
+                <span className={`flex items-center ${isCollapsed ? "justify-center" : "gap-1.5"}`}>
                   { item.icon? item.icon : item.label === "Settings" ? (
                     <Settings className="h-4 w-4" />
                   ) : (
                     <LayoutDashboard className="h-4 w-4" />
                   )}
-                  {!collapsed ? item.label : null}
+                  {!isCollapsed ? item.label : null}
                 </span>
-                {!collapsed && item.hasDropdown ? <ChevronDown className="h-4 w-4 text-[#8b94a2]" /> : null}
+                {!isCollapsed && item.hasDropdown ? <ChevronDown className="h-4 w-4 text-[#8b94a2]" /> : null}
               </Link>
               {showChildren ? (
                 <div className="mt-1 border-l border-[#d7dce6] pl-3">
@@ -228,4 +242,3 @@ export function RootSidebar({ activeLabel }: RootSidebarProps) {
     </aside>
   );
 }
-
