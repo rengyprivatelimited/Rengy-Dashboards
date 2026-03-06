@@ -95,6 +95,20 @@ import vector75 from "./vector-75.svg";
 import vector76 from "./vector-76.svg";
 import vector from "./vector.svg";
 
+type ImgSource = string | { src: string };
+
+function resolveImgSrc(source: ImgSource): string {
+  return typeof source === "string" ? source : source.src;
+}
+
+type TeamCard = {
+  id: number;
+  name: string;
+  icon: { type: "gradient"; vectors: string[] } | { type: "image"; src: ImgSource };
+  metrics: Array<{ label: string; value: string }>;
+  arrowVectors: string[];
+};
+
 const metricCards = [
   {
     id: 1,
@@ -134,7 +148,7 @@ const metricCards = [
   },
 ];
 
-const teamCards = [
+const teamCards: TeamCard[] = [
   {
     id: 1,
     name: "Sales Team",
@@ -587,7 +601,7 @@ export const DashboardMainSection = () => {
                         <img
                           className="w-6 h-6 relative aspect-[1]"
                           alt=""
-                          src={team.icon.src}
+                          src={resolveImgSrc(team.icon.src)}
                         />
                       )}
                       <h3 className="relative w-fit [font-family:'Inter_Tight-Medium',Helvetica] font-medium text-primory text-base tracking-[0] leading-[22.4px] whitespace-nowrap">
@@ -972,7 +986,7 @@ export const DashboardMainSection = () => {
                 <img
                   className="relative w-[217px] h-[217px]"
                   alt=""
-                  src={group13}
+                  src={resolveImgSrc(group13)}
                   aria-hidden="true"
                 />
                 <div className="flex flex-col w-[142px] items-start gap-[33px] relative">
@@ -1190,5 +1204,4 @@ export const DashboardMainSection = () => {
     </main>
   );
 };
-
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Bell, ChevronDown, Mail, MapPin, Pencil, Search, UserRound, ArrowLeft, SendHorizonal } from "lucide-react";
+import { ArrowLeft, Bell, ChevronDown, Mail, MapPin, Pencil, Search, SendHorizonal, UserRound, X } from "lucide-react";
 import { RootSidebar } from "@/components/RootSidebar";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -485,4 +485,3 @@ export default function FinTechPartnerDetailPage() {
     </div>
   );
 }
-

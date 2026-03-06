@@ -100,6 +100,11 @@ function toNumber(value: unknown): number | null {
   return numeric;
 }
 
+function toPrimitiveId(value: unknown): string | number | null {
+  if (typeof value === "string" || typeof value === "number") return value;
+  return null;
+}
+
 function formatAmount(value: unknown): string {
   const numeric = toNumber(value);
   if (numeric === null) return toStringValue(value);
@@ -166,7 +171,7 @@ function mapProjectRow(item: unknown): ProjectListRow {
 
   return {
     id: projectId,
-    rawId: rawId ?? null,
+    rawId: toPrimitiveId(rawId),
     customer: toStringValue(
       firstNonEmptyString(row.customerName, customer.name, latestPayment.customerName),
     ),
@@ -201,7 +206,7 @@ function mapLeadRow(item: unknown): LeadListRow {
     id:
       firstNonEmptyString(row.leadId, row.leadCode, row.referenceNo, row.ticketId) ??
       `#LD-${toStringValue(row.id, "0")}`,
-    rawId: rawId ?? null,
+    rawId: toPrimitiveId(rawId),
     customer: toStringValue(firstNonEmptyString(row.name, row.customerName)),
     vendor: toStringValue(firstNonEmptyString(row.vendorName, vendor.name)),
     source: toStringValue(firstNonEmptyString(row.sourceName, row.sourceType, row.source)),

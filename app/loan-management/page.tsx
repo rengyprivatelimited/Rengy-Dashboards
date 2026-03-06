@@ -541,7 +541,7 @@ export default function LoanManagementPage() {
                                 />
                               </td>
                               <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.loanRefNo}</td>
-                              <td className="border-b border-[#dce1e8] px-2">{row?.lead?.name}</td>
+                              <td className="border-b border-[#dce1e8] px-2">{row.customer}</td>
                               <td className="border-b border-[#dce1e8] px-2" />
                               <td className="border-b border-[#dce1e8] px-2">{row.vendor}</td>
                               <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.projectValue}</td>
@@ -661,7 +661,7 @@ export default function LoanManagementPage() {
                                 />
                               </td>
                               <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.loanRefNo}</td>
-                              <td className="border-b border-[#dce1e8] px-2">{row.lead?.name ?? row.customer}</td>
+                              <td className="border-b border-[#dce1e8] px-2">{row.customer}</td>
                               <td className="border-b border-[#dce1e8] px-2" />
                               <td className="border-b border-[#dce1e8] px-2">{row.vendor}</td>
                               <td className="border-b border-[#dce1e8] px-2 font-semibold">{row.projectValue}</td>
@@ -1167,7 +1167,7 @@ export default function LoanManagementPage() {
                               if (file.url) {
                                 window.open(file.url, "_blank", "noopener,noreferrer");
                               } else {
-                                handleDownload(updateRow.id);
+                                handleDownload(viewRow.id);
                               }
                             }}
                           >

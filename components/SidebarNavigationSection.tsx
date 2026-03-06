@@ -31,7 +31,7 @@ import vector97 from "./vector-97.svg";
 interface NavigationItem {
   id: string;
   label: string;
-  icon: string | { type: "custom"; vectors: string[] };
+  icon: string | { type: "custom"; vectors: string[]; id?: string };
   isActive?: boolean;
   hasSubmenu?: boolean;
   isExpanded?: boolean;
@@ -118,7 +118,7 @@ export const SidebarNavigationSection = () => {
     });
   };
 
-  const renderIcon = (icon: string | { type: "custom"; vectors: string[] }) => {
+  const renderIcon = (icon: string | { type: "custom"; vectors: string[]; id?: string }) => {
     if (typeof icon === "string") {
       return (
         <img
@@ -394,4 +394,3 @@ export const SidebarNavigationSection = () => {
     </nav>
   );
 };
-

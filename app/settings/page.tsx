@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Bell, Building2, ChevronDown, Search, X } from "lucide-react";
 import { RootSidebar } from "@/components/RootSidebar";
@@ -75,7 +75,7 @@ function DocumentModal({
   );
 }
 
-export default function SettingsPage() {
+function SettingsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab");
@@ -349,3 +349,10 @@ export default function SettingsPage() {
   );
 }
 
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#eceef2]" />}>
+      <SettingsPageContent />
+    </Suspense>
+  );
+}

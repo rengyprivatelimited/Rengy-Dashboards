@@ -334,7 +334,7 @@ function TeamManagementPageComponent() {
                               <td className="border border-t-0 border-[#e4e7ec] px-2">{row.name}</td>
                               <td className="border border-t-0 border-[#e4e7ec] px-2">{row.email}</td>
                               <td className="border border-t-0 border-[#e4e7ec] px-2">{row.phone}</td>
-                              <td className="border border-t-0 border-[#e4e7ec] px-2 font-medium">{ row.role.name}</td>
+                              <td className="border border-t-0 border-[#e4e7ec] px-2 font-medium">{row.role}</td>
                               <td className="border border-t-0 border-[#e4e7ec] px-2 font-semibold">{row.dateCreated}</td>
                               <td className="border border-t-0 border-[#e4e7ec] px-2">
                                 <div className="relative flex items-center justify-end gap-1.5" ref={actionMenuRef}>

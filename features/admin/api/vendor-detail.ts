@@ -62,7 +62,7 @@ export type VendorDetailData = {
   review: {
     average: string;
     total: string;
-    distribution: Record<string, string>;
+    distribution: { "5": string; "4": string; "3": string; "2": string; "1": string };
     reviews: Array<{ date: string; author: string; text: string; rating: number }>;
   };
 };

@@ -1,9 +1,7 @@
 import PageImpl from "@/app/fin-tech-partners/[partnerId]/page";
 import { requireRole } from "@/features/auth/server-guard";
 
-type Props = { params: Promise<{ partnerId: string }> };
-
-export default async function AdminPartnerPage(props: Props) {
+export default async function AdminPartnerPage() {
   await requireRole("admin");
-  return <PageImpl {...props} />;
+  return <PageImpl />;
 }
