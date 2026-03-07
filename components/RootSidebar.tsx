@@ -151,7 +151,7 @@ export function RootSidebar({ activeLabel }: RootSidebarProps) {
 
   return (
     <aside
-      className={`block border-r border-[#d5d9e2] bg-[#f6f8fb] px-3 py-4 transition-all duration-200 ${
+      className={`block min-h-screen self-stretch border-r border-[#d5d9e2] bg-[#f6f8fb] px-3 py-4 transition-all duration-200 ${
         isCollapsed ? "w-[76px]" : "w-[240px]"
       }`}
     >

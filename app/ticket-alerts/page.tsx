@@ -66,7 +66,14 @@ function Pagination({
   );
 }
 
-export default function TicketAlertsPage() {
+type TicketAlertsPageMode = "admin" | "sales-embedded";
+
+type TicketAlertsPageProps = {
+  mode?: TicketAlertsPageMode;
+};
+
+export default function TicketAlertsPage({ mode = "admin" }: TicketAlertsPageProps) {
+  const isSalesEmbedded = mode === "sales-embedded";
   const [activeTab, setActiveTab] = useState<"alerts" | "tickets">("alerts");
   const [tickets, setTickets] = useState<TicketRow[]>([]);
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
@@ -171,12 +178,13 @@ export default function TicketAlertsPage() {
   const unreadCount = alerts.filter((item) => item.unread).length;
 
   return (
-    <div className="min-h-screen bg-[#eceef2] text-[#171b24]">
-      <div className="flex">
-        <RootSidebar activeLabel="Ticket & Alerts" />
+    <div className={`${isSalesEmbedded ? "min-w-0 w-full" : "min-h-screen bg-[#eceef2]"} text-[#171b24]`}>
+      <div className={isSalesEmbedded ? "min-w-0 w-full" : "flex"}>
+        {!isSalesEmbedded ? <RootSidebar activeLabel="Ticket & Alerts" /> : null}
 
-        <main className="min-w-0 flex-1">
-          <header className="flex h-[52px] items-center justify-between border-b border-[#d5d9e2] bg-[#f8f9fb] px-5">
+        <main className={isSalesEmbedded ? "min-w-0 w-full" : "min-w-0 flex-1"}>
+          {!isSalesEmbedded ? (
+            <header className="flex h-[52px] items-center justify-between border-b border-[#d5d9e2] bg-[#f8f9fb] px-5">
             <div className="text-[20px] font-semibold text-[#202736]">Admin</div>
             <div className="flex items-center gap-3">
               <div className="hidden h-9 w-[220px] items-center gap-2 rounded border border-[#d8dee8] bg-white px-2.5 text-[12px] text-[#8f97a6] md:flex">
@@ -190,9 +198,10 @@ export default function TicketAlertsPage() {
                 <ChevronDown className="h-3.5 w-3.5 text-[#7f8898]" />
               </div>
             </div>
-          </header>
+            </header>
+          ) : null}
 
-          <section className="p-4">
+          <section className={isSalesEmbedded ? "min-w-0 p-4" : "p-4"}>
             <div className="flex items-start justify-between">
               <div>
                 <h1 className="text-[32px] font-semibold leading-none text-[#1d2028]">Tickets &amp; Notifications</h1>

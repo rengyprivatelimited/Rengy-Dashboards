@@ -12,6 +12,9 @@ import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import LeadsProjectsPage from "@/app/leads-projects/page";
+import TicketAlertsPage from "@/app/ticket-alerts/page";
+import VendorManagementPage from "@/app/vendor-management/page";
+import VendorDetailPage from "@/app/vendor-management/[vendorId]/page";
 import { AmcDashboard } from "./roles/AmcDashboard";
 import { DesignTeamDashboard } from "./roles/DesignTeamDashboard";
 import { FinanceDashboard } from "./roles/FinanceDashboard";
@@ -61,8 +64,17 @@ function DashboardBody({ role, userName, section }: { role: RoleSlug; userName: 
     if (section === "leads") {
       return <LeadsProjectsPage mode="sales-embedded" />;
     }
+    if (section === "vendor-management") {
+      return <VendorManagementPage mode="sales-embedded" />;
+    }
+    if (section === "vendor-management-detail") {
+      return <VendorDetailPage mode="sales-embedded" />;
+    }
     if (section === "reports") {
       return <SalesReportsDashboard />;
+    }
+    if (section === "ticket-alerts") {
+      return <TicketAlertsPage mode="sales-embedded" />;
     }
     return <SalesDashboard userName={userName} />;
   }
@@ -126,7 +138,9 @@ export function RoleDashboard({ role, userName, section }: RoleDashboardProps) {
 
     if (role === "sales-team") {
       if (pathname?.includes("/sales-team/leads")) return "Leads";
+      if (pathname?.includes("/sales-team/vendor-management")) return "Vendor Management";
       if (pathname?.includes("/sales-team/reports")) return "Reports";
+      if (pathname?.includes("/sales-team/ticket-alerts")) return "Tickets";
       return "Dashboard";
     }
 

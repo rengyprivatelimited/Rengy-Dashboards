@@ -241,8 +241,14 @@ export function RoleNavigationMenu({
     if (role === "sales-team" && item === "Leads") {
       return "/sales-team/leads";
     }
+    if (role === "sales-team" && item === "Vendor Management") {
+      return "/sales-team/vendor-management";
+    }
     if (role === "sales-team" && item === "Reports") {
       return "/sales-team/reports";
+    }
+    if (role === "sales-team" && item === "Tickets") {
+      return "/sales-team/ticket-alerts";
     }
     return null;
   };

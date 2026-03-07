@@ -101,9 +101,17 @@ function getReviewWidth(count: string, total: string): number {
   return Math.round((countValue / totalValue) * 100);
 }
 
-export default function VendorDetailPage() {
+type VendorDetailPageMode = "admin" | "sales-embedded";
+
+type VendorDetailPageProps = {
+  mode?: VendorDetailPageMode;
+};
+
+export default function VendorDetailPage({ mode = "admin" }: VendorDetailPageProps) {
   const router = useRouter();
   const params = useParams();
+  const isSalesEmbedded = mode === "sales-embedded";
+  const vendorBasePath = isSalesEmbedded ? "/sales-team/vendor-management" : "/vendor-management";
   const [activeTab, setActiveTab] = useState<VendorTab>("overview");
   const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
   const [projectSortOpen, setProjectSortOpen] = useState(false);
@@ -240,7 +248,7 @@ export default function VendorDetailPage() {
     try {
       await updateVendorStatus(vendorId, type);
       if (type === "delete") {
-        router.push("/vendor-management");
+        router.push(vendorBasePath);
       }
     } catch (error) {
       console.error("Vendor status update failed.", error);
@@ -251,12 +259,13 @@ export default function VendorDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#eceef2] text-[#171b24]" suppressHydrationWarning>
-      <div className="flex">
-        <RootSidebar activeLabel="Vendor Management" />
+    <div className={`${isSalesEmbedded ? "min-w-0 w-full" : "min-h-screen bg-[#eceef2]"} text-[#171b24]`} suppressHydrationWarning>
+      <div className={isSalesEmbedded ? "min-w-0 w-full" : "flex"}>
+        {!isSalesEmbedded ? <RootSidebar activeLabel="Vendor Management" /> : null}
 
-        <main className="min-w-0 flex-1">
-          <header className="flex h-[52px] items-center justify-between border-b border-[#d5d9e2] bg-[#f8f9fb] px-5">
+        <main className={isSalesEmbedded ? "min-w-0 w-full" : "min-w-0 flex-1"}>
+          {!isSalesEmbedded ? (
+            <header className="flex h-[52px] items-center justify-between border-b border-[#d5d9e2] bg-[#f8f9fb] px-5">
             <div className="text-[20px] font-semibold text-[#202736]">Overview</div>
             <div className="flex items-center gap-3">
               <div className="hidden h-9 w-[208px] items-center gap-2 rounded border border-[#d8dee8] bg-white px-2.5 text-[12px] text-[#8f97a6] md:flex">
@@ -270,9 +279,10 @@ export default function VendorDetailPage() {
                 <ChevronDown className="h-3.5 w-3.5 text-[#7f8898]" />
               </div>
             </div>
-          </header>
+            </header>
+          ) : null}
 
-          <section className="space-y-4 p-4">
+          <section className={isSalesEmbedded ? "space-y-4 pt-1" : "space-y-4 p-4"}>
             {isLoading ? (
               <>
                 <div className="flex items-center gap-3">
@@ -318,7 +328,7 @@ export default function VendorDetailPage() {
                 ) : null}
                 <button
                   className="flex items-center gap-3 text-[#202736]"
-                  onClick={() => router.push("/vendor-management")}
+                  onClick={() => router.push(vendorBasePath)}
                 >
                   <ArrowLeft className="h-4 w-4" />
                   <h1 className="text-[16px] font-semibold leading-none">{vendorDetail.name}</h1>

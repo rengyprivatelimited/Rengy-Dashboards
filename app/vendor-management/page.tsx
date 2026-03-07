@@ -22,7 +22,8 @@ function VendorCard({
   costRange,
   teamSize,
   location,
-  userId
+  userId,
+  basePath,
 }: {
   id: number;
   name: string;
@@ -33,11 +34,12 @@ function VendorCard({
   teamSize: string;
   location: string;
   userId: string;
+  basePath: string;
 }) {
   const hrefId = userId && userId !== "-" ? userId : String(id);
   return (
     <Link
-      href={`/vendor-management/${hrefId}`}
+      href={`${basePath}/${hrefId}`}
       className="group block rounded-lg border border-[#eceef2] bg-white p-3 transition-all duration-200 ease-out hover:-translate-y-[1px] hover:border-[#d8deea] hover:shadow-[0_2px_8px_rgba(17,22,63,0.08),0_10px_22px_rgba(17,22,63,0.06)]"
     >
       <div className="flex items-center justify-between">
@@ -94,7 +96,15 @@ function FilterButton({ label }: { label: string }) {
   );
 }
 
-export default function VendorManagementPage() {
+type VendorManagementPageMode = "admin" | "sales-embedded";
+
+type VendorManagementPageProps = {
+  mode?: VendorManagementPageMode;
+};
+
+export default function VendorManagementPage({ mode = "admin" }: VendorManagementPageProps) {
+  const isSalesEmbedded = mode === "sales-embedded";
+  const vendorBasePath = isSalesEmbedded ? "/sales-team/vendor-management" : "/vendor-management";
   const [activeTab, setActiveTab] = useState<"vendors" | "requests">("vendors");
   const [vendorCards, setVendorCards] = useState<VendorCardRow[]>([]);
   const [vendorRequests, setVendorRequests] = useState<VendorRequestRow[]>([]);
@@ -186,12 +196,13 @@ export default function VendorManagementPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#eceef2] text-[#171b24]" suppressHydrationWarning>
-      <div className="flex">
-        <RootSidebar activeLabel="Vendor Management" />
+    <div className={`${isSalesEmbedded ? "min-w-0 w-full" : "min-h-screen bg-[#eceef2]"} text-[#171b24]`} suppressHydrationWarning>
+      <div className={isSalesEmbedded ? "min-w-0 w-full" : "flex"}>
+        {!isSalesEmbedded ? <RootSidebar activeLabel="Vendor Management" /> : null}
 
-        <main className="min-w-0 flex-1">
-          <header className="flex h-[52px] items-center justify-between border-b border-[#d5d9e2] bg-[#f8f9fb] px-5">
+        <main className={isSalesEmbedded ? "min-w-0 w-full" : "min-w-0 flex-1"}>
+          {!isSalesEmbedded ? (
+            <header className="flex h-[52px] items-center justify-between border-b border-[#d5d9e2] bg-[#f8f9fb] px-5">
             <div className="text-[20px] font-semibold text-[#202736]">Admin</div>
             <div className="flex items-center gap-3">
               <div className="hidden h-9 w-[208px] items-center gap-2 rounded border border-[#d8dee8] bg-white px-2.5 text-[12px] text-[#8f97a6] md:flex">
@@ -205,9 +216,10 @@ export default function VendorManagementPage() {
                 <ChevronDown className="h-3.5 w-3.5 text-[#7f8898]" />
               </div>
             </div>
-          </header>
+            </header>
+          ) : null}
 
-          <section className="p-4">
+          <section className={isSalesEmbedded ? "pt-1" : "p-4"}>
             <h1 className="text-[32px] font-semibold leading-none text-[#1d2028]">Vendors</h1>
             {loadError ? (
               <div className="mt-3 rounded border border-[#f1c1c1] bg-[#fff5f5] px-3 py-2 text-[13px] text-[#b91c1c]">
@@ -289,6 +301,7 @@ export default function VendorManagementPage() {
                         teamSize={card.teamSize}
                         location={card.location}
                         userId={card.userId}
+                        basePath={vendorBasePath}
                       />
                     ))}
               </div>
@@ -538,4 +551,3 @@ export default function VendorManagementPage() {
     </div>
   );
 }
-
